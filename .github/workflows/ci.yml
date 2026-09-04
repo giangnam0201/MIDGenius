@@ -24,6 +24,14 @@ on:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
+# Every step below pipes into `tee` to keep a copy of its output. Without
+# pipefail the step's exit status is tee's, so a crashed conversion reports
+# success and the missing artifact is the only clue. `shell: bash` runs with
+# `-eo pipefail`, unlike the default `bash -e`.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   # ---------------------------------------------------------------- tests
   tests:
@@ -105,20 +113,24 @@ jobs:
           QUANTIZE: ${{ github.event.inputs.quantize || 'off' }}
           QUALITY: ${{ github.event.inputs.quality || 'good' }}
         run: |
-          python -m midgenius.cli "$AUDIO" -o artifacts/output.mid \n            --quantize "$QUANTIZE" --quality "$QUALITY" | tee artifacts/convert.txt
+          python -m midgenius.cli "$AUDIO" -o artifacts/output.mid \
+            --quantize "$QUANTIZE" --quality "$QUALITY" | tee artifacts/convert.txt
 
       - name: Audit the result against the source audio
         env:
           AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
         run: |
-          python tools/audit.py "$AUDIO" artifacts/output.mid \n            --render artifacts/preview.wav | tee artifacts/audit.txt
+          python tools/audit.py "$AUDIO" artifacts/output.mid \
+            --render artifacts/preview.wav | tee artifacts/audit.txt
 
       - name: Score against the reference transcription
         env:
           AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
           REFERENCE: ${{ github.event.inputs.reference || 'aria.mid' }}
         run: |
-          python tools/evaluate.py "$AUDIO" artifacts/output.mid \n            --reference "$REFERENCE" --offset 0 --passes 1 \n            | tee artifacts/evaluate.txt
+          python tools/evaluate.py "$AUDIO" artifacts/output.mid \
+            --reference "$REFERENCE" --offset 0 --passes 1 \
+            | tee artifacts/evaluate.txt
 
       - name: Summary
         if: always()

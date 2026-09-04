@@ -25,15 +25,62 @@ pipeline exists to defuse a specific one.
 
 ### The right tool per source
 
-Using one model for everything is the second-biggest source of errors after
-skipping separation. MIDGenius routes each stem to a different transcriber:
+Using one model for everything is the second-biggest source of errors.
+MIDGenius routes each source to a different transcriber:
 
 - **Bass, vocals** → **pYIN** monophonic f0 tracking. For a genuinely
   monophonic source this beats a polyphonic model by a wide margin, and the
   continuous contour is where vibrato, slides and scoops live.
-- **Other / harmonic content** → **Basic Pitch** (Spotify's ICASSP-2022 model),
-  run through ONNX Runtime.
+- **Harmonic content** → **Basic Pitch** (Spotify's ICASSP-2022 model), run
+  through ONNX Runtime.
 - **Drums** → band-onset percussion classifier (below).
+
+### Separation is a means, not an end
+
+The obvious design — split into stems, transcribe each — is not the one that
+measures best, and finding out why produced the single largest accuracy gain
+in this project.
+
+Demucs *generates* each source rather than masking the mix, so outside its
+training domain the stems are not a partition of the input. On an ambient synth
+track it routed the **attack transients of pitched instruments** (plucks,
+mallets, koto, music box) into the *drum* stem. The pitched stems kept the
+sustain and lost the attacks — and attacks are exactly what onset detection
+needs. Removing the drum stem, only 26 dB down, **halved** pitched F1.
+
+So the untouched mix is transcribed as well, and its notes are folded in
+wherever the stems missed them. The mix keeps every attack and the full
+harmonic context; the stems find notes the mix masks. Measured:
+
+| pitched F1 | per-stem | mix only | **mix ∪ stems** |
+|---|---|---|---|
+| soft synth pads | 28.1% | 55.3% | **50.6%** |
+| chiptune | 51.5% | 47.3% | **56.2%** |
+
+Either source alone has a catastrophic case. The union does not, which matters
+more than its slightly better average. (`--no-mix-pass` disables it.)
+
+### Thresholds adapt to the material
+
+Basic Pitch's onset head reports *confidence*, and confidence tracks how sharp
+the attacks are: a chiptune with hard square-wave attacks peaks near 1.0, while
+soft synth pads peak near 0.3. One fixed number cannot serve both — the value
+tuned on the former transcribed **a sixth** of the notes of the latter and
+called the rest silence.
+
+So the threshold is derived from the distribution of onset peaks on the
+material at hand. Scored against reference transcriptions of two deliberately
+dissimilar tracks, the best threshold sat at essentially the same multiple of
+that distribution:
+
+```
+soft synth pads   best onset 0.40 = 1.21 x p99 of onset peaks
+chiptune          best onset 0.60 = 1.23 x p99 of onset peaks
+```
+
+This is the same principle the percussion stage already used — normalise to the
+signal's own scale rather than guessing an absolute. `--fixed-threshold`
+restores the configured constants.
 
 ---
 
@@ -176,19 +223,21 @@ Every run prints a report:
 
 ## Measured accuracy
 
-Numbers, not adjectives. Scored on the demo track (*Graze the Roof*, 184 s)
-against a human-made reference transcription, with `mir_eval`: a note counts
-only if its onset is within 50 ms and its pitch within 50 cents. The
-arrangement loops, so both passes are scored independently — they agree to
-within a point, which is a good sign the measurement itself is sound.
+Numbers, not adjectives. Two reference pairs, scored with `mir_eval` — a note
+counts only if its onset is within 50 ms and its pitch within 50 cents.
+`tools/regression.py` reproduces this table, and CI runs it on every push.
 
-| | pass 1 | pass 2 |
-|---|---|---|
-| pitched precision / recall / **F1** | 68.3% / 42.8% / **52.6%** | 66.7% / 41.7% / **51.3%** |
-| drums mean F1 (kick / snare / hat) | **49.5%** (31 / 47 / 70) | **50.9%** (32 / 51 / 70) |
+| pair | precision | recall | **pitched F1** | drums F1 |
+|---|---|---|---|---|
+| **aria** — 8.5 min, audio rendered 1:1 from its own MIDI | 56.5% | 55.0% | **55.8%** | 45.6% |
+| **graze** — 3 min recording vs a separate human arrangement | 66.2% | 47.2% | **55.1%** | 49.5% |
 
-And against the source audio itself (`tools/audit.py`, which renders the MIDI
-back to audio):
+`aria` is the stricter test: because the audio is rendered from the reference,
+alignment is exact (the search returns 0.00 s) and *every* discrepancy is the
+transcriber's fault — no arrangement differences to hide behind.
+
+Against the source audio itself (`tools/audit.py`, which renders the MIDI back
+to audio and compares):
 
 | | |
 |---|---|
@@ -198,36 +247,36 @@ back to audio):
 | track coverage | **99%** |
 
 For scale: multi-instrument transcription of real music is an open research
-problem, and F1 in the 40–60% band is where current systems live. Rhythm and
-harmony come out much better than note-level F1 suggests, which matches what
-you hear — the output follows the track closely, and most of the loss is in
-exact pitch assignment rather than in timing.
+problem and current systems live in the 40–60% F1 band. Rhythm and harmony
+score much better than note-level F1 suggests, which matches what you hear —
+timing and chords follow the track closely, and most of the remaining loss is
+exact pitch assignment.
 
 Reproduce it:
 
 ```bash
-python -m pytest tests -q                       # 61 unit tests
-python tools/benchmark.py                       # synthetic ground truth
-python tools/audit.py music.mp3 out.mid         # vs the source audio
-python tools/evaluate.py music.mp3 out.mid --reference reference.mid
+python -m pytest tests -q            # 61 unit tests
+python tools/regression.py           # every reference pair, one table
+python tools/benchmark.py            # synthetic ground truth
+python tools/audit.py song.mp3 out.mid
+python tools/evaluate.py song.mp3 out.mid --reference truth.mid --offset 0
 ```
 
 ### Known limits
 
-- **Octave errors.** ~126 per pass, skewed toward an octave too high. They cost
-  about 6 points of recall (forgiving octaves raises it from 37% to 44%). The
-  harmonic-ghost filter does not catch them: they are confident detections, not
-  weak ghosts, and forcing the filter harder loses more real notes than it
-  removes phantoms.
-- **Kick over-detection.** Precision stays near 22% across a 2.7× sweep of the
-  threshold, so these are not marginal detections to be tuned away — the
-  recording has low-frequency transients the reference arrangement does not
-  write. Some are real, some are bass bleeding into the drum stem.
+- **Octave errors** are the largest remaining pitch error, skewed an octave
+  high. Forgiving octaves raises recall by ~7 points. The harmonic-ghost filter
+  does not catch them — they are confident detections, not weak ghosts, and
+  forcing it harder loses more real notes than it removes.
 - **Note offsets.** Requiring the release to match as well as the attack drops
-  F1 to ~18%. Onsets are solid; note *lengths* are not, which is normal for
-  frame-threshold decoding and rarely audible on percussive material.
-- Tuning was done on one track. The thresholds are sensible defaults, not
-  universal ones — for a very different genre, sweep them with `tools/sweep.py`.
+  F1 sharply. Onsets are solid; note *lengths* are not, which is inherent to
+  frame-threshold decoding.
+- **Percussion on non-drum material.** When a track has plucked or mallet
+  instruments, Demucs routes their attacks into the drum stem and the drum
+  transcriber reports them as hits. Some are genuinely percussive; some are not.
+- Two reference tracks is a thin basis for the tuned constants. The *rules* are
+  material-independent; the numbers in them are not guaranteed to be. Add pairs
+  to `tools/regression.py` and re-check.
 
 ## Tuning for a difficult track
 
