@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--harmonic-ratio", type=float, default=None,
                    help="octave/harmonic ghost is cut if this much weaker than "
                         "its parent (higher = more aggressive; default 0.28)")
+    g.add_argument("--no-octave-deghost", action="store_true",
+                   help="keep octave harmonic ghosts (disable envelope-correlation "
+                        "octave suppression, which is on by default)")
+    g.add_argument("--octave-deghost-corr", type=float, default=None,
+                   help="correlation threshold for octave deghosting (default 0.80)")
     g.add_argument("--no-ghost-filter", action="store_true",
                    help="keep harmonic/octave phantom notes")
     g.add_argument("--fixed-threshold", action="store_true",
@@ -176,6 +181,10 @@ def config_from_args(args: argparse.Namespace) -> Config:
             s.harmonic_suppression = False
         if args.harmonic_ratio is not None:
             s.harmonic_ratio = args.harmonic_ratio
+        if args.no_octave_deghost:
+            s.octave_deghost_env = False
+        if args.octave_deghost_corr is not None:
+            s.octave_deghost_corr = args.octave_deghost_corr
         if args.melodia:
             s.melodia_trick = True
 

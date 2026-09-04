@@ -75,6 +75,17 @@ class StemConfig:
     # `octave_deghost_ratio` of the lower note's (a real octave keeps its attack).
     octave_deghost: bool = False
     octave_deghost_ratio: float = 0.5
+    # Envelope-correlation octave deghost (ON by default): drop an octave note
+    # whose frame activation is a scaled copy of the note below it (a harmonic),
+    # keeping notes with an independent envelope. corr>=threshold => harmonic =>
+    # drop. This is the one octave fix that survives full-track validation -
+    # confidence, onset strength and a hard harmonic ratio all cut real octaves
+    # too, because Basic Pitch's note and onset heads both fire at harmonics;
+    # the envelope *shape* is what actually distinguishes a copy from a voice.
+    # Measured: aria pitched F1 60.7 -> 61.7 (precision +4) with the dense
+    # recording unchanged. --no-octave-deghost restores the old behaviour.
+    octave_deghost_env: bool = True
+    octave_deghost_corr: float = 0.76
     min_confidence: float = 0.14          # drop notes whose mean activation is low
     max_polyphony: int = 0                # 0 = unlimited; else keep N strongest
 

@@ -620,6 +620,89 @@ def deghost_octaves(post: Posteriorgram, notes: List[Note],
     return kept
 
 
+def deghost_octaves_env(post: Posteriorgram, notes: List[Note],
+                        corr_threshold: float = 0.9, overlap_frac: float = 0.6,
+                        intervals: Tuple[int, ...] = (12, 24),
+                        max_attack_gap: float = 0.06) -> List[Note]:
+    """Drop octave harmonic ghosts by frame-envelope correlation.
+
+    A harmonic ghost at ``p + 12`` is not an independent event: its frame
+    activation is essentially a scaled copy of the fundamental at ``p`` - they
+    rise and fall together because the ghost's energy *is* the fundamental's
+    energy leaking one octave up. A genuinely played octave note has its own
+    attack and decay, so its envelope decorrelates from the note below it.
+
+    Neither note confidence nor onset strength separates these (Basic Pitch's
+    note and onset heads both fire at harmonics), but the *shape over time*
+    does. For a note at ``p + interval`` overlapping a stronger, near-
+    simultaneous note at ``p``, the two note-head envelopes are correlated over
+    the overlap; the upper note is removed only when that correlation exceeds
+    ``corr_threshold`` - i.e. it is a scaled copy, not an independent voice.
+    """
+    if post.n_frames == 0 or not notes:
+        return notes
+
+    note_act = post.note
+    times = post.times
+    n_bins = note_act.shape[1]
+
+    def frames(n: Note) -> Tuple[int, int, int]:
+        s = int(np.clip(np.searchsorted(times, n.start), 0, post.n_frames - 1))
+        e = int(np.clip(np.searchsorted(times, n.end), s + 1, post.n_frames))
+        b = n.pitch - MIDI_OFFSET
+        return s, e, b
+
+    conf = {}
+    for n in notes:
+        s, e, b = frames(n)
+        conf[id(n)] = float(note_act[s:e, b].mean()) if 0 <= b < n_bins else 0.0
+
+    by_pitch: dict = {}
+    for n in notes:
+        by_pitch.setdefault(n.pitch, []).append(n)
+    for v in by_pitch.values():
+        v.sort(key=lambda n: n.start)
+
+    alive = {id(n): True for n in notes}
+    for child in sorted(notes, key=lambda n: conf[id(n)]):
+        if not alive[id(child)]:
+            continue
+        cs, ce, cb = frames(child)
+        if not (0 <= cb < n_bins) or ce - cs < 3:
+            continue
+        killed = False
+        for iv in intervals:
+            for parent in by_pitch.get(child.pitch - iv, ()):
+                if not alive[id(parent)] or parent is child:
+                    continue
+                if abs(parent.start - child.start) > max_attack_gap:
+                    continue
+                ov = min(parent.end, child.end) - max(parent.start, child.start)
+                if child.duration <= 0 or ov / child.duration < overlap_frac:
+                    continue
+                if conf[id(parent)] <= conf[id(child)]:
+                    continue
+                pb = parent.pitch - MIDI_OFFSET
+                if not (0 <= pb < n_bins):
+                    continue
+                a = note_act[cs:ce, cb].astype(np.float64)
+                b = note_act[cs:ce, pb].astype(np.float64)
+                if a.std() < 1e-6 or b.std() < 1e-6:
+                    continue
+                corr = float(np.corrcoef(a, b)[0, 1])
+                if corr >= corr_threshold:
+                    alive[id(child)] = False
+                    killed = True
+                    break
+            if killed:
+                break
+
+    kept = [n for n in notes if alive[id(n)]]
+    if len(kept) != len(notes):
+        log.debug("octave env-deghost removed %d notes", len(notes) - len(kept))
+    return kept
+
+
 def drop_low_confidence(notes: List[Note], min_confidence: float) -> List[Note]:
     if min_confidence <= 0:
         return notes
