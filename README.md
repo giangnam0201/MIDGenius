@@ -167,12 +167,67 @@ Every run prints a report:
   skipped (silent)  vocals
 
   tracks:
-    drums       1683 notes  pitch  36-51   vel  30-127 (avg  85)
-    bass         241 notes  pitch  28-52   vel  28-127 (avg  91)
-    other        892 notes  pitch  41-89   vel  28-127 (avg  96)
+    drums        979 notes  pitch  36-51   vel  30-127 (avg  84)
+    bass         188 notes  pitch  28-55   vel  28-127 (avg  93)
+    other       1047 notes  pitch  38-93   vel  28-127 (avg  95)
 ```
 
 ---
+
+## Measured accuracy
+
+Numbers, not adjectives. Scored on the demo track (*Graze the Roof*, 184 s)
+against a human-made reference transcription, with `mir_eval`: a note counts
+only if its onset is within 50 ms and its pitch within 50 cents. The
+arrangement loops, so both passes are scored independently — they agree to
+within a point, which is a good sign the measurement itself is sound.
+
+| | pass 1 | pass 2 |
+|---|---|---|
+| pitched precision / recall / **F1** | 68.3% / 42.8% / **52.6%** | 66.7% / 41.7% / **51.3%** |
+| drums mean F1 (kick / snare / hat) | **49.5%** (31 / 47 / 70) | **50.9%** (32 / 51 / 70) |
+
+And against the source audio itself (`tools/audit.py`, which renders the MIDI
+back to audio):
+
+| | |
+|---|---|
+| global time offset | **−12 ms** |
+| onset F1 | **90.8%** |
+| chroma (harmony) agreement | **0.896** |
+| track coverage | **99%** |
+
+For scale: multi-instrument transcription of real music is an open research
+problem, and F1 in the 40–60% band is where current systems live. Rhythm and
+harmony come out much better than note-level F1 suggests, which matches what
+you hear — the output follows the track closely, and most of the loss is in
+exact pitch assignment rather than in timing.
+
+Reproduce it:
+
+```bash
+python -m pytest tests -q                       # 61 unit tests
+python tools/benchmark.py                       # synthetic ground truth
+python tools/audit.py music.mp3 out.mid         # vs the source audio
+python tools/evaluate.py music.mp3 out.mid --reference reference.mid
+```
+
+### Known limits
+
+- **Octave errors.** ~126 per pass, skewed toward an octave too high. They cost
+  about 6 points of recall (forgiving octaves raises it from 37% to 44%). The
+  harmonic-ghost filter does not catch them: they are confident detections, not
+  weak ghosts, and forcing the filter harder loses more real notes than it
+  removes phantoms.
+- **Kick over-detection.** Precision stays near 22% across a 2.7× sweep of the
+  threshold, so these are not marginal detections to be tuned away — the
+  recording has low-frequency transients the reference arrangement does not
+  write. Some are real, some are bass bleeding into the drum stem.
+- **Note offsets.** Requiring the release to match as well as the attack drops
+  F1 to ~18%. Onsets are solid; note *lengths* are not, which is normal for
+  frame-threshold decoding and rarely audible on percussive material.
+- Tuning was done on one track. The thresholds are sensible defaults, not
+  universal ones — for a very different genre, sweep them with `tools/sweep.py`.
 
 ## Tuning for a difficult track
 
@@ -199,7 +254,8 @@ midgenius/
   midiout.py      MIDI assembly
   pipeline.py     orchestration
   cli.py          command line interface
-tests/            46 tests against synthesised ground truth
+tests/            61 tests against synthesised ground truth
+tools/            benchmark, audit and reference-scoring harnesses
 ```
 
 ```bash
