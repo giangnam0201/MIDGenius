@@ -218,7 +218,14 @@ class Config:
     # produced song (where stem artefacts hurt); instrumental/synth material
     # keeps the mix-primary stem additions. vocal_active_db: how close to the
     # loudest stem the vocals must sit to count as "really there".
-    auto_dense_mix_only: bool = True
+    # NOTE: auto mix-only was a mistake driven by chroma cosine, which rewards
+    # sparse output - it stripped the melodic "other" stem (brass, lead hooks)
+    # and the result sounded like drums+bass with no tune. Keep the melodic stems
+    # by default; mix-only stays available but opt-in.
+    auto_dense_mix_only: bool = False
+    # For a produced song (active vocal stem), keep the union of separate
+    # instrument tracks instead of collapsing to one mix-primary harmony voice.
+    auto_song_union: bool = True
     vocal_active_db: float = 15.0
     # In mix-only mode, still transcribe the (cleanly separated) vocal stem so
     # the lead melody gets its own line instead of being lost in the mix.

@@ -187,6 +187,19 @@ def convert(input_path: str, output_path: Optional[str] = None,
             log.info("vocals active (%.0f dB, loudest %.0f dB): pitched from mix "
                      "only", vocals_lvl, loudest)
 
+    # A produced song (marked by a real vocal stem) is kept as the *union* of
+    # separate instrument tracks rather than the mix-primary single harmony
+    # track: collapsing bass, brass and vocal onto one piano voice sounds like
+    # mush, and the mix-primary note selection also drops the melodic "other"
+    # stem's detail that carries the tune. mix-primary still wins on clean synth
+    # / game material (better note selection, and one instrument is fine there).
+    use_union = not cfg.mix_primary
+    if cfg.auto_song_union and cfg.separate and not mix_only:
+        vocals_lvl = result.stem_levels.get("vocals", -99.0)
+        if vocals_lvl > loudest - cfg.vocal_active_db:
+            use_union = True
+            log.info("vocals active: keeping separate instrument tracks (union)")
+
     tracks: List[Track] = []
     for name, stem_cfg in stem_cfgs:
         stem = stems.get(name)
@@ -245,7 +258,7 @@ def convert(input_path: str, output_path: Optional[str] = None,
         timings["transcribe:mix"] = time.time() - t0
         log.info("%-8s %4d notes (%.1fs)", "mix", len(mix_track.notes),
                  timings["transcribe:mix"])
-        if cfg.mix_primary and mix_track.notes:
+        if not use_union and mix_track.notes:
             tracks = _merge_mix_primary(tracks, mix_track, cfg.min_stem_confidence)
         else:
             tracks = _merge_pitched_sources(tracks, mix_track)
