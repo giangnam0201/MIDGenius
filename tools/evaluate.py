@@ -87,6 +87,54 @@ def read_reference(path: str) -> List[RefNote]:
     return notes
 
 
+def dedupe_unisons(notes: Sequence[RefNote], tol: float = 0.03) -> List[RefNote]:
+    """Collapse the same pitch sounding on several tracks at the same instant.
+
+    Arrangements routinely double a part for timbre - this reference has a
+    Bass Guitar and a Slap Bass playing identical lines. Those are one note
+    event musically, but two rows in the file, and note matching is one to one,
+    so leaving them in would cap achievable recall at 50% on that part and
+    punish a correct transcription for not hallucinating a duplicate.
+    """
+    out: List[RefNote] = []
+    for n in sorted(notes, key=lambda x: (x.is_drum, x.pitch, x.start)):
+        prev = out[-1] if out else None
+        if (prev is not None and prev.is_drum == n.is_drum
+                and prev.pitch == n.pitch and abs(prev.start - n.start) <= tol):
+            prev.end = max(prev.end, n.end)
+            prev.velocity = max(prev.velocity, n.velocity)
+            continue
+        out.append(RefNote(n.start, n.end, n.pitch, n.velocity, n.is_drum))
+    out.sort(key=lambda n: n.start)
+    return out
+
+
+REGISTERS = (("bass  (<C3)", 0, 47), ("mid   (C3-C5)", 48, 71),
+             ("high  (>=C5)", 72, 127))
+
+
+def recall_by_register(truth: Sequence, pred: Sequence, tol: float = 0.05) -> None:
+    """Where are notes being lost? Recall split by pitch register."""
+    import mir_eval
+
+    print("  RECALL BY REGISTER")
+    for label, lo, hi in REGISTERS:
+        t = [n for n in truth if lo <= n.pitch <= hi]
+        if not t:
+            continue
+        p = [n for n in pred if lo - 12 <= n.pitch <= hi + 12]
+        if not p:
+            print("    %-14s   0.0%%   (%d reference notes, none produced)"
+                  % (label, len(t)))
+            continue
+        ti, tp = _arrays(t)
+        pi, pp = _arrays(p)
+        matches = mir_eval.transcription.match_notes(
+            ti, tp, pi, pp, onset_tolerance=tol, offset_ratio=None)
+        print("    %-14s %5.1f%%   (%d reference notes, %d produced nearby)"
+              % (label, 100 * len(matches) / len(t), len(t), len(p)))
+
+
 def synth_pitched(notes: Sequence[RefNote], sr: int = SR,
                   duration: Optional[float] = None) -> np.ndarray:
     """Cheap render of the pitched notes, for chroma alignment only."""
@@ -276,6 +324,8 @@ def main() -> int:
                     help="skip alignment search and use this offset (seconds)")
     ap.add_argument("--passes", type=int, default=2,
                     help="how many matching passes to score (looping tracks)")
+    ap.add_argument("--no-dedupe", action="store_true",
+                    help="keep doubled unison parts in the reference")
     args = ap.parse_args()
 
     from midgenius.audio import load
@@ -283,6 +333,9 @@ def main() -> int:
     from benchmark import read_midi_notes, PredNote
 
     ref = read_reference(args.reference)
+    n_raw = len(ref)
+    if not args.no_dedupe:
+        ref = dedupe_unisons(ref)
     ref_pitched = [n for n in ref if not n.is_drum]
     ref_drums = [n for n in ref if n.is_drum]
     ref_end = max(n.end for n in ref)
@@ -292,8 +345,10 @@ def main() -> int:
     print("=" * 74)
     print("EVALUATION vs reference: %s" % os.path.basename(args.reference))
     print("=" * 74)
-    print("  reference   %d notes (%d pitched, %d drums), %.1f s"
-          % (len(ref), len(ref_pitched), len(ref_drums), ref_end))
+    print("  reference   %d notes (%d pitched, %d drums), %.1f s%s"
+          % (len(ref), len(ref_pitched), len(ref_drums), ref_end,
+             "   [%d unison duplicates collapsed]" % (n_raw - len(ref))
+             if n_raw != len(ref) else ""))
     print("  produced    %d notes (%d pitched, %d drums)"
           % (len(pred_pitched_raw) + len(pred_drums_raw),
              len(pred_pitched_raw), len(pred_drums_raw)))
@@ -330,6 +385,8 @@ def main() -> int:
                   % (m["n_true"], m["n_pred"], m["octave"]))
             if m["onset_err"] == m["onset_err"]:
                 print("            median onset error %+.0f ms" % (1000 * m["onset_err"]))
+            print()
+            recall_by_register(ref_pitched, pp)
 
         d = score_drums(ref_drums, pd)
         if d:

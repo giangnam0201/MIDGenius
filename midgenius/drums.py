@@ -75,7 +75,7 @@ class DrumBand:
 DEFAULT_BANDS: Tuple[DrumBand, ...] = (
     DrumBand("kick",     GM_KICK,        30.0,   130.0, sensitivity=0.90,
              min_interval=0.070, contrast_ref=(300.0, 1200.0), contrast_db=1.0),
-    DrumBand("snare",    GM_SNARE,      170.0,   900.0, sensitivity=1.00,
+    DrumBand("snare",    GM_SNARE,      170.0,   900.0, sensitivity=1.50,
              min_interval=0.070, contrast_ref=(30.0, 130.0), contrast_db=-7.0,
              exclusive_with=("tom_low", "tom_high")),
     DrumBand("tom_low",  GM_TOM_LOW,     90.0,   200.0, sensitivity=1.60,
@@ -84,7 +84,7 @@ DEFAULT_BANDS: Tuple[DrumBand, ...] = (
     DrumBand("tom_high", GM_TOM_HIGH,   200.0,   420.0, sensitivity=1.70,
              min_interval=0.110, contrast_ref=(1800.0, 8000.0), contrast_db=4.0,
              exclusive_with=("snare", "tom_low")),
-    DrumBand("hat",      GM_HAT_CLOSED, 6000.0, 14000.0, sensitivity=1.05,
+    DrumBand("hat",      GM_HAT_CLOSED, 6000.0, 14000.0, sensitivity=1.40,
              min_interval=0.040, contrast_ref=(200.0, 900.0), contrast_db=-14.0,
              exclusive_with=("cymbal",)),
     DrumBand("cymbal",   GM_CRASH,      2500.0,  6000.0, sensitivity=1.55,

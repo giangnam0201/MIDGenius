@@ -43,7 +43,7 @@ class StemConfig:
 
     # Basic Pitch decoding thresholds
     onset_threshold: float = 0.6
-    frame_threshold: float = 0.45
+    frame_threshold: float = 0.30
     min_note_ms: float = 58.0
     infer_onsets: bool = True
     # The "melodia trick" sweeps up leftover frame energy that has no onset
@@ -100,8 +100,14 @@ def default_stems() -> Dict[str, StemConfig]:
             max_midi=67,   # G4
             mono_fmin=30.0,
             mono_fmax=440.0,
-            mono_voiced_prob=0.50,
-            min_note_ms=70.0,
+            # A bass note's periodicity is strong but its onset transient and
+            # the decay tail are not, so pYIN's voicing confidence sits low for
+            # a large part of every note. Tuned against a reference
+            # transcription of a real track: 0.50 discarded a third of the
+            # line, 0.30 recovers it without adding noise (the pitch range gate
+            # and minimum length do the rejecting instead).
+            mono_voiced_prob=0.30,
+            min_note_ms=100.0,
             pitch_bend=True,
             harmonic_suppression=True,
         ),
@@ -126,7 +132,7 @@ def default_stems() -> Dict[str, StemConfig]:
             min_midi=28,
             max_midi=104,
             onset_threshold=0.6,
-            frame_threshold=0.45,
+            frame_threshold=0.30,
             min_note_ms=64.0,
             harmonic_suppression=True,
             min_confidence=0.16,
@@ -168,7 +174,7 @@ class Config:
     mixdown_stem: StemConfig = field(
         default_factory=lambda: StemConfig(
             name="mixdown", method="poly", program=GM_ACOUSTIC_GRAND,
-            onset_threshold=0.6, frame_threshold=0.45, max_polyphony=10,
+            onset_threshold=0.6, frame_threshold=0.30, max_polyphony=10,
         )
     )
 
