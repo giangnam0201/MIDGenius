@@ -543,6 +543,83 @@ def correct_octaves(post: Posteriorgram, notes: List[Note],
     return notes
 
 
+def deghost_octaves(post: Posteriorgram, notes: List[Note],
+                    onset_ratio: float = 0.5, overlap_frac: float = 0.5,
+                    intervals: Tuple[int, ...] = (12, 24),
+                    max_attack_gap: float = 0.05) -> List[Note]:
+    """Drop octave notes that are harmonics, judged by onset independence.
+
+    Basic Pitch's note head fires at a note's octave harmonics as well as its
+    fundamental, so a single sounded note at pitch ``p`` often produces a
+    spurious extra note at ``p + 12`` (and ``p + 24``). The hard part is telling
+    that ghost apart from a genuine octave doubling the music actually plays.
+
+    Note *confidence* (mean frame activation) does not separate them - a real
+    octave note and a strong harmonic ghost both light up the frame head - which
+    is why the confidence-ratio filter loses real notes when pushed hard. The
+    **onset** head does separate them: a genuinely played octave note has its own
+    attack, so an independent onset activation fires at ``p + 12``; a harmonic
+    ghost has only the bleed of the fundamental's onset there.
+
+    So a note at ``p + interval`` is removed only when a stronger, near-
+    simultaneous, overlapping note sits at ``p`` and the upper note's own onset
+    activation is less than ``onset_ratio`` of the lower note's. That keeps
+    deliberate octaves while cutting the harmonic doublings.
+    """
+    if post.n_frames == 0 or not notes:
+        return notes
+
+    times = post.times
+    onset = post.onset
+    n_bins = onset.shape[1]
+
+    def onset_strength(n: Note) -> float:
+        s = int(np.clip(np.searchsorted(times, n.start), 0, post.n_frames - 1))
+        b = n.pitch - MIDI_OFFSET
+        if not (0 <= b < n_bins):
+            return 0.0
+        lo = max(0, s - 1)
+        hi = min(post.n_frames, s + 2)
+        return float(onset[lo:hi, b].max())
+
+    strength = {id(n): onset_strength(n) for n in notes}
+
+    by_pitch: dict = {}
+    for n in notes:
+        by_pitch.setdefault(n.pitch, []).append(n)
+    for v in by_pitch.values():
+        v.sort(key=lambda n: n.start)
+
+    alive = {id(n): True for n in notes}
+    # Weakest-onset notes are the likeliest ghosts; test them first.
+    for child in sorted(notes, key=lambda n: strength[id(n)]):
+        if not alive[id(child)]:
+            continue
+        killed = False
+        for iv in intervals:
+            for parent in by_pitch.get(child.pitch - iv, ()):
+                if not alive[id(parent)] or parent is child:
+                    continue
+                if abs(parent.start - child.start) > max_attack_gap:
+                    continue
+                ov = min(parent.end, child.end) - max(parent.start, child.start)
+                if child.duration <= 0 or ov / child.duration < overlap_frac:
+                    continue
+                if strength[id(parent)] <= strength[id(child)]:
+                    continue
+                if strength[id(child)] < onset_ratio * strength[id(parent)]:
+                    alive[id(child)] = False
+                    killed = True
+                    break
+            if killed:
+                break
+
+    kept = [n for n in notes if alive[id(n)]]
+    if len(kept) != len(notes):
+        log.debug("octave deghost removed %d notes", len(notes) - len(kept))
+    return kept
+
+
 def drop_low_confidence(notes: List[Note], min_confidence: float) -> List[Note]:
     if min_confidence <= 0:
         return notes

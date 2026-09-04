@@ -70,6 +70,11 @@ class StemConfig:
     octave_correction: bool = False
     octave_sub_ratio: float = 0.80
     octave_onset_ratio: float = 0.50
+    # Drop octave harmonic ghosts by onset independence: a note an octave above a
+    # stronger, simultaneous note is cut when its own onset activation is under
+    # `octave_deghost_ratio` of the lower note's (a real octave keeps its attack).
+    octave_deghost: bool = False
+    octave_deghost_ratio: float = 0.5
     min_confidence: float = 0.14          # drop notes whose mean activation is low
     max_polyphony: int = 0                # 0 = unlimited; else keep N strongest
 

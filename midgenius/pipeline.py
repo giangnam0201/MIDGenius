@@ -375,6 +375,9 @@ def _transcribe_poly(y: np.ndarray, sr: int, cfg: StemConfig) -> List[Note]:
         notes = N.correct_octaves(post, notes,
                                   sub_ratio=cfg.octave_sub_ratio,
                                   onset_ratio=cfg.octave_onset_ratio)
+    if cfg.octave_deghost:
+        notes = N.deghost_octaves(post, notes,
+                                  onset_ratio=cfg.octave_deghost_ratio)
     if cfg.harmonic_suppression:
         notes = N.suppress_harmonic_ghosts(notes, ratio=cfg.harmonic_ratio)
     notes = N.merge_repeats(notes)
