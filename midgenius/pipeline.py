@@ -252,7 +252,9 @@ def convert(input_path: str, output_path: Optional[str] = None,
     # The mix keeps every attack and the full harmonic context; the stems find
     # notes the mix masks. Taking both and de-duplicating beats either alone on
     # average, and - more importantly - has no catastrophic case.
-    if cfg.separate and cfg.transcribe_mix:
+    # mix_only relies entirely on this pass for pitched notes, so it must run
+    # even if the mix pass was otherwise disabled - else the output is drums only.
+    if cfg.separate and (cfg.transcribe_mix or mix_only):
         t0 = time.time()
         mix_track = transcribe_stem(src, cfg.mixdown_stem, cutoff)
         timings["transcribe:mix"] = time.time() - t0
@@ -494,8 +496,12 @@ def _merge_mix_primary(tracks: List[Track], mix_track: Track,
             kept_stem.append(n)
             added += 1
 
-    harmony = Track(name="harmony", program=(pitched[0].program if pitched else 0),
-                    is_drum=False)
+    # Piano, not the first stem's program: the first pitched stem is the bass
+    # (stem order drums, bass, other, vocals), and labelling a whole collapsed
+    # melody+harmony track "fingered bass" makes the entire output play back in
+    # a bass timbre. Acoustic grand is the neutral melodic default, and matches
+    # the mixdown stem these notes mostly come from.
+    harmony = Track(name="harmony", program=0, is_drum=False)
     harmony.notes = list(mix_track.notes) + kept_stem
     harmony.sort()
     harmony.notes = N.trim_overlaps(harmony.notes)

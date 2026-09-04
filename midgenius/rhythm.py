@@ -113,8 +113,8 @@ class TempoMap:
 
 
 def _maybe_double_tempo(onset_env: np.ndarray, beats: np.ndarray, tempo: float,
-                        sr: int, hop: int, slow_below: float = 100.0,
-                        evidence: float = 0.55) -> Tuple[float, np.ndarray]:
+                        sr: int, hop: int, slow_below: float = 80.0,
+                        evidence: float = 0.7) -> Tuple[float, np.ndarray]:
     """Double a too-slow tempo when real onsets sit between the tracked beats.
 
     librosa often locks onto the half-note pulse of a straight groove, reporting

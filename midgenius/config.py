@@ -140,6 +140,10 @@ def default_stems() -> Dict[str, StemConfig]:
             min_midi=24,   # C1
             max_midi=67,   # G4
             min_note_ms=100.0,
+            # A bass line is a single voice; without a cap the polyphonic model
+            # can stack a note's octave/fifth harmonics at the same instant. Keep
+            # it monophonic so it stays a bass line, not a bass chord.
+            max_polyphony=1,
             pitch_bend=True,
             harmonic_suppression=True,
         ),

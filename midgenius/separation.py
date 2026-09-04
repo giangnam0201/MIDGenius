@@ -62,12 +62,12 @@ def _cache_dir() -> Optional[str]:
     return d
 
 
-def _cache_key(audio: Audio, model_name: str, shifts: int, overlap: float,
-               segment: Optional[float]) -> str:
+def _cache_key(audio: Audio, backend: str, model_name: str, shifts: int,
+               overlap: float, segment: Optional[float]) -> str:
     h = hashlib.md5()
     h.update(np.ascontiguousarray(audio.data, dtype=np.float32).tobytes())
-    h.update(("%s|%d|%d|%.4f|%s|%s" % (model_name, audio.sr, shifts, overlap,
-                                       segment, audio.data.shape)).encode())
+    h.update(("%s|%s|%d|%d|%.4f|%s|%s" % (backend, model_name, audio.sr, shifts,
+                                          overlap, segment, audio.data.shape)).encode())
     return h.hexdigest()
 
 
@@ -144,7 +144,7 @@ def separate(
     cdir = _cache_dir()
     cpath = None
     if cdir is not None:
-        cpath = os.path.join(cdir, _cache_key(audio, model_name, shifts,
+        cpath = os.path.join(cdir, _cache_key(audio, backend, model_name, shifts,
                                               overlap, segment) + ".npz")
         hit = _cache_load(cpath, audio.sr)
         if hit is not None:
