@@ -41,9 +41,15 @@ class StemConfig:
     min_midi: int = 21
     max_midi: int = 108
 
-    # Basic Pitch decoding thresholds
+    # Basic Pitch decoding thresholds. These are only used when
+    # `adaptive_threshold` is off, or as the manual override the CLI sets when
+    # the user passes an explicit threshold.
     onset_threshold: float = 0.6
     frame_threshold: float = 0.30
+    # Derive the thresholds from the model's own confidence distribution on
+    # this material instead of using the fixed numbers above. A fixed value
+    # tuned on a punchy track transcribes a sixth of the notes of a soft one.
+    adaptive_threshold: bool = True
     min_note_ms: float = 58.0
     infer_onsets: bool = True
     # The "melodia trick" sweeps up leftover frame energy that has no onset
@@ -169,6 +175,14 @@ class Config:
     quantize_drums_only: bool = False
 
     # --- transcription ----------------------------------------------------
+    # Also transcribe the untouched mix and fold in whatever the stems missed.
+    # Separation can strip the attack transients that onset detection needs -
+    # see _merge_pitched_sources - so the mix is a safety net, not a luxury.
+    transcribe_mix: bool = True
+    # A mono-tracked stem (vocals) this far below the loudest stem is
+    # separation bleed rather than an instrument, and a monophonic tracker
+    # turns bleed into confident wrong notes.
+    mono_stem_floor_db: float = 20.0
     stems: Dict[str, StemConfig] = field(default_factory=default_stems)
     # If separation is off, the whole mix goes through this config instead.
     mixdown_stem: StemConfig = field(

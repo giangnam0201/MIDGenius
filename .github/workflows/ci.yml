@@ -94,38 +94,40 @@ jobs:
           mkdir -p artifacts/benchmark
           python tools/benchmark.py --keep artifacts/benchmark | tee artifacts/benchmark.txt
 
+      - name: Regression over every reference pair
+        run: |
+          mkdir -p artifacts
+          python tools/regression.py --out artifacts | tee artifacts/regression.txt
+
       - name: Convert the track
         env:
           AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
           QUANTIZE: ${{ github.event.inputs.quantize || 'off' }}
           QUALITY: ${{ github.event.inputs.quality || 'good' }}
         run: |
-          mkdir -p artifacts
-          python -m midgenius.cli "$AUDIO" -o artifacts/output.mid \
-            --quantize "$QUANTIZE" --quality "$QUALITY" | tee artifacts/convert.txt
+          python -m midgenius.cli "$AUDIO" -o artifacts/output.mid \n            --quantize "$QUANTIZE" --quality "$QUALITY" | tee artifacts/convert.txt
 
       - name: Audit the result against the source audio
         env:
           AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
         run: |
-          python tools/audit.py "$AUDIO" artifacts/output.mid \
-            --render artifacts/preview.wav | tee artifacts/audit.txt
+          python tools/audit.py "$AUDIO" artifacts/output.mid \n            --render artifacts/preview.wav | tee artifacts/audit.txt
 
       - name: Score against the reference transcription
         env:
           AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
           REFERENCE: ${{ github.event.inputs.reference || 'aria.mid' }}
         run: |
-          # The audio is rendered from the reference, so alignment is known
-          # exactly: no search, offset 0, one pass. Every discrepancy is ours.
-          python tools/evaluate.py "$AUDIO" artifacts/output.mid \
-            --reference "$REFERENCE" --offset 0 --passes 1 \
-            | tee artifacts/evaluate.txt
+          python tools/evaluate.py "$AUDIO" artifacts/output.mid \n            --reference "$REFERENCE" --offset 0 --passes 1 \n            | tee artifacts/evaluate.txt
 
       - name: Summary
         if: always()
         run: |
           {
+            echo '## Regression (all reference pairs)'
+            echo '```'
+            cat artifacts/regression.txt 2>/dev/null | tail -12 || echo "(none)"
+            echo '```'
             echo '## Reference scoring'
             echo '```'
             cat artifacts/evaluate.txt 2>/dev/null || echo "(no reference)"

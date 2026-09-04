@@ -89,6 +89,42 @@ def infer_onsets(onset: np.ndarray, note: np.ndarray, n_diff: int = 2) -> np.nda
     return np.maximum(onset, frame_diff)
 
 
+def adaptive_thresholds(post: Posteriorgram, scale: float = 1.22,
+                        frame_ratio: float = 0.5,
+                        lo: float = 0.15, hi: float = 0.75
+                        ) -> Tuple[float, float]:
+    """Derive onset/frame thresholds from the model's own confidence spread.
+
+    A fixed threshold cannot serve different material. Basic Pitch's onset head
+    reports how *confident* it is, and that confidence scales with how sharp the
+    attacks are: a chiptune with hard square-wave attacks peaks near 1.0, while
+    soft synth pads on the same passage peak near 0.3. Applying one number to
+    both means either drowning in phantoms or, as happened here, transcribing a
+    sixth of the notes and calling the rest silence.
+
+    So the threshold is set relative to the distribution of onset activation
+    peaks on *this* material. Measured against reference transcriptions of two
+    deliberately dissimilar tracks, the best threshold sat at essentially the
+    same multiple of the 99th percentile of those peaks:
+
+        soft synth pads   best onset 0.40 = 1.21x p99
+        chiptune          best onset 0.60 = 1.23x p99
+
+    Two tracks is thin evidence for the exact constant, but the *principle* -
+    normalise to the model's own scale, rather than guessing an absolute - is
+    the same one the percussion stage already relies on. ``lo``/``hi`` keep a
+    degenerate stem from producing an absurd threshold.
+    """
+    if post.n_frames == 0 or post.onset.size == 0:
+        return lo, lo * frame_ratio
+    t, f = _argrelmax_time(post.onset)
+    peaks = post.onset[t, f] if len(t) else post.onset.reshape(-1)
+    if peaks.size == 0:
+        return lo, lo * frame_ratio
+    onset = float(np.clip(scale * float(np.percentile(peaks, 99)), lo, hi))
+    return onset, max(0.10, onset * frame_ratio)
+
+
 def decode_polyphonic(
     post: Posteriorgram,
     onset_threshold: float = 0.5,

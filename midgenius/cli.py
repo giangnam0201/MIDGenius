@@ -44,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="speed/accuracy preset (default: good)")
     g.add_argument("--no-separate", action="store_true",
                    help="skip stem separation and transcribe the whole mix")
+    g.add_argument("--no-mix-pass", action="store_true",
+                   help="do not also transcribe the untouched mix; separation "
+                        "can strip attacks, so this usually loses notes")
     g.add_argument("--model", default="htdemucs",
                    help="Demucs model name (default: htdemucs)")
     g.add_argument("--device", default="auto", choices=("auto", "cpu", "cuda", "mps"))
@@ -68,6 +71,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="do not write pitch-bend expression")
     g.add_argument("--no-ghost-filter", action="store_true",
                    help="keep harmonic/octave phantom notes")
+    g.add_argument("--fixed-threshold", action="store_true",
+                   help="use the configured thresholds instead of deriving "
+                        "them from the model's confidence on this material")
     g.add_argument("--melodia", action="store_true",
                    help="recover notes with no detected onset; finds quiet "
                         "notes in sparse material, adds phantoms in dense mixes")
@@ -124,6 +130,7 @@ def config_from_args(args: argparse.Namespace) -> Config:
     if args.shifts is not None:
         cfg.separation_shifts = max(1, args.shifts)
     cfg.lossy_repair = not args.no_lossy_repair
+    cfg.transcribe_mix = not args.no_mix_pass
 
     if args.only:
         keep = {s.strip().lower() for s in args.only.split(",") if s.strip()}
@@ -138,8 +145,12 @@ def config_from_args(args: argparse.Namespace) -> Config:
     for s in list(cfg.stems.values()) + [cfg.mixdown_stem]:
         if args.onset_threshold is not None:
             s.onset_threshold = args.onset_threshold
+            s.adaptive_threshold = False
         if args.frame_threshold is not None:
             s.frame_threshold = args.frame_threshold
+            s.adaptive_threshold = False
+        if args.fixed_threshold:
+            s.adaptive_threshold = False
         if args.min_note_ms is not None:
             s.min_note_ms = args.min_note_ms
         if args.max_polyphony is not None:
