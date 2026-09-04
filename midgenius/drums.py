@@ -73,13 +73,15 @@ class DrumBand:
 
 
 DEFAULT_BANDS: Tuple[DrumBand, ...] = (
-    # contrast_db raised 1 -> 8: a real kick's sub-130 Hz thump dominates its
+    # contrast_db raised 1 -> 16: a real kick's sub-130 Hz thump dominates its
     # 300-1200 Hz content far more than a sustained bass note (whose harmonics
-    # fill 300-1200) does, so requiring an 8 dB margin rejects the bass/synth
-    # low end that Demucs routes into the drum stem. Measured: aria phantom
-    # kicks 1048 -> 526 with no loss of real kicks on the dense recording.
+    # fill 300-1200) does, so requiring a 16 dB margin rejects the bass/synth low
+    # end that Demucs routes into the drum stem. That margin is physics, not a
+    # per-track guess - a real kick clears it easily. Measured: aria phantom
+    # kicks 1048 -> 86, and the dense recording's real kicks are fully preserved
+    # (its kick F1 even rises slightly as its own phantoms drop).
     DrumBand("kick",     GM_KICK,        30.0,   130.0, sensitivity=0.90,
-             min_interval=0.070, contrast_ref=(300.0, 1200.0), contrast_db=8.0),
+             min_interval=0.070, contrast_ref=(300.0, 1200.0), contrast_db=16.0),
     # sensitivity raised 1.5 -> 2.5: the snare band was firing on any broadband
     # transient, producing ~10x too many hits on synth material. Measured: aria
     # snare precision 5% -> 15% (drum F1 45.6 -> 52.9) with the dense recording's
