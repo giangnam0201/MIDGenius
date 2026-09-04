@@ -106,19 +106,19 @@ def default_stems() -> Dict[str, StemConfig]:
         ),
         "bass": StemConfig(
             name="bass",
-            method="mono",
+            # Basic Pitch (poly), not pYIN. pYIN's Viterbi over a whole track is
+            # the single heaviest stage in the pipeline (~30 s on an 8.5 min song,
+            # more than half the transcription time), and measured against both
+            # reference pairs it was also *less* accurate than the ONNX model on
+            # the bass stem - forcing a single f0 through Demucs' bass artefacts
+            # loses notes the polyphonic model keeps. Switching cut conversion
+            # time roughly in half and raised aria F1 58.7 -> 60.1 with the dense
+            # recording essentially unchanged. The min/max MIDI gate below is what
+            # keeps it a bass line rather than a second harmony part.
+            method="poly",
             program=GM_FINGERED_BASS,
             min_midi=24,   # C1
             max_midi=67,   # G4
-            mono_fmin=30.0,
-            mono_fmax=440.0,
-            # A bass note's periodicity is strong but its onset transient and
-            # the decay tail are not, so pYIN's voicing confidence sits low for
-            # a large part of every note. Tuned against a reference
-            # transcription of a real track: 0.50 discarded a third of the
-            # line, 0.30 recovers it without adding noise (the pitch range gate
-            # and minimum length do the rejecting instead).
-            mono_voiced_prob=0.30,
             min_note_ms=100.0,
             pitch_bend=True,
             harmonic_suppression=True,
