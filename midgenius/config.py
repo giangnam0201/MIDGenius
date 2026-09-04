@@ -149,14 +149,24 @@ def default_stems() -> Dict[str, StemConfig]:
         ),
         "vocals": StemConfig(
             name="vocals",
-            method="mono",
+            # Basic Pitch (poly) with low, fixed thresholds captures the sung
+            # melody far more completely than pYIN did - measured on a pop vocal,
+            # pYIN and default thresholds left the lead a sparse skeleton (a whole
+            # verse nearly empty). Capturing at onset 0.30 and then capping to two
+            # voices keeps the full melodic line (and the chorus's group harmony)
+            # without the harmonic fuzz a solo line does not have.
+            method="poly",
+            onset_threshold=0.30,
+            frame_threshold=0.15,
+            adaptive_threshold=False,
+            max_polyphony=2,
             program=GM_VOICE_OOHS,
             min_midi=36,
             max_midi=88,
             mono_fmin=65.0,
             mono_fmax=1400.0,
             mono_voiced_prob=0.58,
-            min_note_ms=80.0,
+            min_note_ms=70.0,
             pitch_bend=True,
             vibrato_preserve=True,
             expression_cc=True,
