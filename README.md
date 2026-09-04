@@ -13,6 +13,7 @@
 [![Issues](https://img.shields.io/github/issues/giangnam0201/MIDGenius?style=for-the-badge&logo=github&color=8250df)](https://github.com/giangnam0201/MIDGenius/issues)
 [![License](https://img.shields.io/github/license/giangnam0201/MIDGenius?style=for-the-badge&color=blue)](LICENSE)
 
+[![CI](https://github.com/giangnam0201/MIDGenius/actions/workflows/ci.yml/badge.svg)](https://github.com/giangnam0201/MIDGenius/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![ONNX Runtime](https://img.shields.io/badge/ONNX-Runtime-005CED?style=flat-square&logo=onnx&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-Demucs-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)

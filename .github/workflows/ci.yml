@@ -1,7 +1,9 @@
-name: MIDGenius
+name: CI
 
-# Heavy lifting (Demucs separation, the ground-truth benchmark, full-track
-# conversion) runs here rather than on a laptop.
+# Unit tests run on every push/PR (fast, no audio needed). The heavy work -
+# Demucs separation and the synthetic benchmark - is manual-only via the
+# "Run workflow" button, and can optionally convert an audio file you commit
+# or upload, since the copyrighted demo tracks are not shipped in the repo.
 on:
   push:
     branches: [main]
@@ -9,14 +11,8 @@ on:
   workflow_dispatch:
     inputs:
       audio:
-        description: "Audio file in the repo to convert"
-        default: "aria.mp3"
-      reference:
-        description: "Ground-truth MIDI to score against"
-        default: "aria.mid"
-      quantize:
-        description: "Quantise grid (off, 1/8, 1/16, 1/32)"
-        default: "off"
+        description: "Path to an audio file in the repo to convert (optional)"
+        default: ""
       quality:
         description: "fast | good | best"
         default: "good"
@@ -24,13 +20,9 @@ on:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
-# Every step below pipes into `tee` to keep a copy of its output. Without
-# pipefail the step's exit status is tee's, so a crashed conversion reports
-# success and the missing artifact is the only clue. `shell: bash` runs with
-# `-eo pipefail`, unlike the default `bash -e`.
 defaults:
   run:
-    shell: bash
+    shell: bash          # -eo pipefail, so a crashed step through `tee` still fails
 
 jobs:
   # ---------------------------------------------------------------- tests
@@ -59,9 +51,10 @@ jobs:
       - name: Run tests
         run: python -m pytest tests -q
 
-  # ------------------------------------------------------------ evaluate
-  evaluate:
-    name: Benchmark + convert
+  # ------------------------------------------------------- benchmark (manual)
+  benchmark:
+    name: Synthetic benchmark + optional convert
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -97,62 +90,26 @@ jobs:
           python -c "from midgenius import separation; \
             print('separation backend:', separation.available_backend())"
 
-      - name: Ground-truth benchmark
-        run: |
-          mkdir -p artifacts/benchmark
-          python tools/benchmark.py --keep artifacts/benchmark | tee artifacts/benchmark.txt
-
-      - name: Regression over every reference pair
+      - name: Ground-truth benchmark (self-contained, synthetic audio)
         run: |
           mkdir -p artifacts
-          python tools/regression.py --out artifacts | tee artifacts/regression.txt
+          python tools/benchmark.py --keep artifacts | tee artifacts/benchmark.txt
 
-      - name: Convert the track
+      - name: Convert an audio file (only if one was provided and exists)
         env:
-          AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
-          QUANTIZE: ${{ github.event.inputs.quantize || 'off' }}
+          AUDIO: ${{ github.event.inputs.audio }}
           QUALITY: ${{ github.event.inputs.quality || 'good' }}
         run: |
-          python -m midgenius.cli "$AUDIO" -o artifacts/output.mid \
-            --quantize "$QUANTIZE" --quality "$QUALITY" | tee artifacts/convert.txt
-
-      - name: Audit the result against the source audio
-        env:
-          AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
-        run: |
-          python tools/audit.py "$AUDIO" artifacts/output.mid \
-            --render artifacts/preview.wav | tee artifacts/audit.txt
-
-      - name: Score against the reference transcription
-        env:
-          AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
-          REFERENCE: ${{ github.event.inputs.reference || 'aria.mid' }}
-        run: |
-          python tools/evaluate.py "$AUDIO" artifacts/output.mid \
-            --reference "$REFERENCE" --offset 0 --passes 1 \
-            | tee artifacts/evaluate.txt
-
-      - name: Summary
-        if: always()
-        run: |
-          {
-            echo '## Regression (all reference pairs)'
-            echo '```'
-            cat artifacts/regression.txt 2>/dev/null | tail -12 || echo "(none)"
-            echo '```'
-            echo '## Reference scoring'
-            echo '```'
-            cat artifacts/evaluate.txt 2>/dev/null || echo "(no reference)"
-            echo '```'
-            echo '## Audit'
-            echo '```'
-            cat artifacts/audit.txt 2>/dev/null || echo "(no audit)"
-            echo '```'
-            echo '## Benchmark'
-            echo '```'
-            cat artifacts/benchmark.txt 2>/dev/null | tail -20 || echo "(no benchmark)"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$AUDIO" ] && [ -f "$AUDIO" ]; then
+            python -m midgenius.cli "$AUDIO" -o artifacts/output.mid \
+              --quality "$QUALITY" | tee artifacts/convert.txt
+            python tools/audit.py "$AUDIO" artifacts/output.mid \
+              --render artifacts/preview.wav | tee artifacts/audit.txt
+          else
+            echo "No audio provided (or file not found) - skipping conversion." \
+              "The copyrighted demo tracks are not shipped; commit or upload" \
+              "your own audio and pass its path to convert it." | tee artifacts/convert.txt
+          fi
 
       - name: Upload results
         if: always()
