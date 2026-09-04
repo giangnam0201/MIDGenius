@@ -243,8 +243,8 @@ counts only if its onset is within 50 ms and its pitch within 50 cents.
 
 | pair | precision | recall | **pitched F1** | drums F1 |
 |---|---|---|---|---|
-| **aria** — 8.5 min, audio rendered 1:1 from its own MIDI | 59.5% | 61.9% | **60.7%** | 52.9% |
-| **graze** — 3 min recording vs a separate human arrangement | 63.2% | 48.1% | **54.6%** | 49.5% |
+| **aria** — 8.5 min, audio rendered 1:1 from its own MIDI | 64.2% | 59.8% | **61.9%** | 52.9% |
+| **graze** — 3 min recording vs a separate human arrangement | 63.4% | 47.9% | **54.5%** | 49.6% |
 
 `aria` is the stricter test: because the audio is rendered from the reference,
 alignment is exact (the search returns 0.00 s) and *every* discrepancy is the
@@ -278,10 +278,13 @@ python tools/evaluate.py song.mp3 out.mid --reference truth.mid --offset 0
 
 ### Known limits
 
-- **Octave errors** are the largest remaining pitch error, skewed an octave
-  high. Forgiving octaves raises recall by ~7 points. The harmonic-ghost filter
-  does not catch them — they are confident detections, not weak ghosts, and
-  forcing it harder loses more real notes than it removes.
+- **Octave errors** are still the largest pitch error, skewed an octave high,
+  but the frame-envelope deghost (above) now removes the ones that are pure
+  harmonics — a spurious note whose activation is a scaled copy of the note an
+  octave below. What it deliberately leaves are the ambiguous cases: an octave
+  note with its own envelope, real or not, is kept, because the confidence and
+  onset signals cannot tell those apart (Basic Pitch fires at harmonics in every
+  head). Fully resolving those would take retraining the network.
 - **Note offsets.** Requiring the release to match as well as the attack drops
   F1 sharply. Onsets are solid; note *lengths* are not, which is inherent to
   frame-threshold decoding.
