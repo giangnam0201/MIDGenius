@@ -301,14 +301,41 @@ def test_collapse_flams_merges_double_triggers():
     assert len(out) == 1 and out[0].velocity == 100
 
 
-def test_band_flux_responds_to_its_own_band():
+def test_band_flux_peaks_at_the_onset_in_its_band():
+    """The flux peak must land on the attack, not on its decay or tail.
+
+    Each band is scaled by its own reference level, so flux magnitudes are not
+    comparable *between* bands - what matters is that within a band the peak
+    is at the right time.
+    """
     import librosa
-    y = np.concatenate([np.zeros(SR // 2, np.float32), click(SR, 0.2, freq=60)])
+    lead = SR // 2
+    y = np.concatenate([np.zeros(lead, np.float32), click(SR, 0.25, freq=60)])
     S = np.abs(librosa.stft(y, n_fft=2048, hop_length=256))
     freqs = np.fft.rfftfreq(2048, 1.0 / SR)
     low = drums.band_flux(S, freqs, 30, 130)
-    high = drums.band_flux(S, freqs, 6000, 10000)
-    assert low.max() > high.max() * 3
+    t_peak = int(np.argmax(low)) * 256 / SR
+    assert abs(t_peak - lead / SR) < 0.03, t_peak
+
+
+def test_band_flux_is_silent_for_a_band_with_no_signal():
+    """A band holding nothing must not manufacture onsets from noise.
+
+    This is the situation for the cymbal band of a heavily lowpassed MP3:
+    without a guard, per-band normalisation would amplify the numerical floor
+    into a full-scale envelope and invent a hi-hat part out of nothing.
+    """
+    import librosa
+    import scipy.signal as sps
+    # Band-limited on purpose: a click would be broadband and would legitimately
+    # put energy in every band.
+    t = np.arange(int(1.5 * SR)) / SR
+    y = (np.sin(2 * np.pi * 60 * t) * np.minimum(1, t * 4)).astype(np.float32)
+    sos = sps.butter(8, 500, btype="low", fs=SR, output="sos")
+    y = sps.sosfilt(sos, y).astype(np.float32)
+    S = np.abs(librosa.stft(y, n_fft=2048, hop_length=256))
+    freqs = np.fft.rfftfreq(2048, 1.0 / SR)
+    assert drums.band_flux(S, freqs, 9000, 11000).max() == 0.0
 
 
 # --------------------------------------------------------------------------

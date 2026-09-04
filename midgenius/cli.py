@@ -68,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="do not write pitch-bend expression")
     g.add_argument("--no-ghost-filter", action="store_true",
                    help="keep harmonic/octave phantom notes")
+    g.add_argument("--melodia", action="store_true",
+                   help="recover notes with no detected onset; finds quiet "
+                        "notes in sparse material, adds phantoms in dense mixes")
 
     g = p.add_argument_group("rhythm")
     g.add_argument("-q", "--quantize", default="off",
@@ -145,6 +148,8 @@ def config_from_args(args: argparse.Namespace) -> Config:
             s.pitch_bend = False
         if args.no_ghost_filter:
             s.harmonic_suppression = False
+        if args.melodia:
+            s.melodia_trick = True
 
     cfg.quantize = args.quantize
     cfg.quantize_strength = float(min(max(args.quantize_strength, 0.0), 1.0))

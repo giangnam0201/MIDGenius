@@ -122,7 +122,14 @@ def band_flux(S: np.ndarray, freqs: np.ndarray, fmin: float, fmax: float,
 
     band = S[sel, :]
     ref = float(np.percentile(band, 99.5))
-    if ref <= 0:
+    # Because each band is scaled by its own reference, a band holding nothing
+    # but filter leakage would still show large relative swings and invent
+    # onsets - which is exactly the situation for the cymbal band of a heavily
+    # lowpassed MP3. Require the band to carry real signal first, measured
+    # against the loudest thing in the file: 60 dB down is stopband leakage,
+    # not a quiet hi-hat (which sits 30-40 dB below a kick at most).
+    peak = float(S.max())
+    if ref <= 0 or ref < peak * 1e-3:
         return np.zeros(S.shape[1], dtype=np.float32)
     floor = ref * (10.0 ** (-floor_db / 20.0))
     band_db = 20.0 * np.log10(np.maximum(band, floor) / ref)

@@ -87,7 +87,9 @@ jobs:
             print('separation backend:', separation.available_backend())"
 
       - name: Ground-truth benchmark
-        run: python tools/benchmark.py --keep artifacts/benchmark | tee artifacts/benchmark.txt
+        run: |
+          mkdir -p artifacts/benchmark
+          python tools/benchmark.py --keep artifacts/benchmark | tee artifacts/benchmark.txt
 
       - name: Convert the track
         env:
@@ -110,6 +112,10 @@ jobs:
         if: always()
         run: |
           {
+            echo '## Reference scoring'
+            echo '```'
+            cat artifacts/evaluate.txt 2>/dev/null || echo "(no reference)"
+            echo '```'
             echo '## Audit'
             echo '```'
             cat artifacts/audit.txt 2>/dev/null || echo "(no audit)"

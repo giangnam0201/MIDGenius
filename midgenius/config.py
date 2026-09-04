@@ -42,11 +42,17 @@ class StemConfig:
     max_midi: int = 108
 
     # Basic Pitch decoding thresholds
-    onset_threshold: float = 0.5
-    frame_threshold: float = 0.3
+    onset_threshold: float = 0.6
+    frame_threshold: float = 0.45
     min_note_ms: float = 58.0
     infer_onsets: bool = True
-    melodia_trick: bool = True
+    # The "melodia trick" sweeps up leftover frame energy that has no onset
+    # behind it. That leftover energy is mostly harmonics of notes already
+    # transcribed, so on real material it is a phantom-note generator: on the
+    # ground-truth chord benchmark it cost 36 points of precision and produced
+    # every one of the octave errors. Off by default; worth enabling only for
+    # sparse, quiet solo material where missed notes matter more.
+    melodia_trick: bool = False
     energy_tolerance: int = 11
 
     # Phantom-note suppression
@@ -119,8 +125,8 @@ def default_stems() -> Dict[str, StemConfig]:
             program=GM_ACOUSTIC_GRAND,
             min_midi=28,
             max_midi=104,
-            onset_threshold=0.55,
-            frame_threshold=0.33,
+            onset_threshold=0.6,
+            frame_threshold=0.45,
             min_note_ms=64.0,
             harmonic_suppression=True,
             min_confidence=0.16,
@@ -162,7 +168,7 @@ class Config:
     mixdown_stem: StemConfig = field(
         default_factory=lambda: StemConfig(
             name="mixdown", method="poly", program=GM_ACOUSTIC_GRAND,
-            onset_threshold=0.55, frame_threshold=0.35, max_polyphony=10,
+            onset_threshold=0.6, frame_threshold=0.45, max_polyphony=10,
         )
     )
 
