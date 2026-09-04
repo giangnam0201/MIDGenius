@@ -86,6 +86,10 @@ class StemConfig:
     # recording unchanged. --no-octave-deghost restores the old behaviour.
     octave_deghost_env: bool = True
     octave_deghost_corr: float = 0.76
+    # Test-time augmentation: extra pitch-shift passes of the model to average,
+    # e.g. (-1, 0, 1). Empty = single pass (default). Costs one model run each,
+    # so it belongs to the "best" quality preset, not the light default.
+    tta_semitones: Tuple[int, ...] = ()
     min_confidence: float = 0.14          # drop notes whose mean activation is low
     max_polyphony: int = 0                # 0 = unlimited; else keep N strongest
 

@@ -156,6 +156,72 @@ def frame_times(n_frames: int) -> np.ndarray:
     return original - window_offset * window_numbers
 
 
+def _shift_bins(mat: np.ndarray, k: int) -> np.ndarray:
+    """Shift a posteriorgram down by ``k`` frequency bins, zero-filling."""
+    if k == 0:
+        return mat
+    out = np.zeros_like(mat)
+    if k > 0:
+        out[:, :-k] = mat[:, k:]
+    else:
+        out[:, -k:] = mat[:, :k]
+    return out
+
+
+def predict_tta(y: np.ndarray, sr: int, semitones=(-1, 0, 1),
+                batch_size: int = 8, session=None) -> Posteriorgram:
+    """Test-time augmentation: average the model over small pitch shifts.
+
+    The same ONNX model is run on the audio shifted by each of ``semitones``
+    (via a phase vocoder, tempo preserved), and each output posteriorgram is
+    shifted back by the same number of semitone bins and averaged. Giving the
+    network several looks and averaging cancels a chunk of its per-frame noise -
+    a standard, weights-free way to raise neural-transcription accuracy. It costs
+    one model pass per shift, so it is opt-in rather than the default.
+    """
+    import librosa
+    from midgenius.audio import resample
+
+    y = np.asarray(y, dtype=np.float32).reshape(-1)
+    if sr != AUDIO_SAMPLE_RATE:
+        y = resample(y, sr, AUDIO_SAMPLE_RATE)
+        sr = AUDIO_SAMPLE_RATE
+
+    sess = session or get_session()
+    acc_note = acc_onset = acc_contour = None
+    times = None
+    n = 0
+    for k in semitones:
+        ys = (y if k == 0
+              else librosa.effects.pitch_shift(y, sr=sr, n_steps=float(k)).astype(np.float32))
+        post = predict(ys, sr, batch_size=batch_size, session=sess)
+        if post.n_frames == 0:
+            continue
+        note = _shift_bins(post.note, k)
+        onset = _shift_bins(post.onset, k)
+        contour = _shift_bins(post.contour, k * CONTOURS_BINS_PER_SEMITONE)
+        if acc_note is None:
+            acc_note = note.astype(np.float64)
+            acc_onset = onset.astype(np.float64)
+            acc_contour = contour.astype(np.float64)
+            times = post.times
+        else:
+            m = min(acc_note.shape[0], note.shape[0])
+            acc_note = acc_note[:m] + note[:m]
+            acc_onset = acc_onset[:m] + onset[:m]
+            acc_contour = acc_contour[:m] + contour[:m]
+            times = times[:m]
+        n += 1
+    if not n:
+        return predict(y, sr, batch_size=batch_size, session=sess)
+    return Posteriorgram(
+        note=(acc_note / n).astype(np.float32),
+        onset=(acc_onset / n).astype(np.float32),
+        contour=(acc_contour / n).astype(np.float32),
+        times=times,
+    )
+
+
 def predict(y: np.ndarray, sr: int, batch_size: int = 8,
             session=None) -> Posteriorgram:
     """Run Basic Pitch over a mono signal.

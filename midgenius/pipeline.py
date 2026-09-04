@@ -352,7 +352,10 @@ def _transcribe_mono(y: np.ndarray, sr: int, cfg: StemConfig) -> List[Note]:
 
 
 def _transcribe_poly(y: np.ndarray, sr: int, cfg: StemConfig) -> List[Note]:
-    post = basicpitch.predict(y, sr)
+    if cfg.tta_semitones:
+        post = basicpitch.predict_tta(y, sr, semitones=tuple(cfg.tta_semitones))
+    else:
+        post = basicpitch.predict(y, sr)
 
     onset_thr, frame_thr = cfg.onset_threshold, cfg.frame_threshold
     if cfg.adaptive_threshold:
