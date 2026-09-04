@@ -214,6 +214,12 @@ class Config:
     # on a synth track: mix-only precision 50% vs stem-union 40%. Off keeps the
     # full stem-union behaviour, which wins on dense real recordings.
     pitched_from_mix_only: bool = False
+    # Auto-switch to mix-only when a prominent vocal stem marks this as a dense
+    # produced song (where stem artefacts hurt); instrumental/synth material
+    # keeps the mix-primary stem additions. vocal_active_db: how close to the
+    # loudest stem the vocals must sit to count as "really there".
+    auto_dense_mix_only: bool = True
+    vocal_active_db: float = 15.0
     # Mix-primary union: take the mix as the precise base and add back only
     # confident stem notes the mix missed. Keeps mix precision on clean material
     # while still recovering masked notes on dense mixes. Measured on both

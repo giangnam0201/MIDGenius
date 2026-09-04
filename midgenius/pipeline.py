@@ -169,6 +169,24 @@ def convert(input_path: str, output_path: Optional[str] = None,
     # ---- transcribe each stem -------------------------------------------
     stem_cfgs = _stem_configs(cfg, stems)
     loudest = max(result.stem_levels.values()) if result.stem_levels else 0.0
+
+    # Adaptive merge strategy. Folding confident stem notes into the mix
+    # (mix-primary) helps clean, well-separated material but hurts a dense
+    # produced mix, where Demucs' pitched stems are full of artefacts that read
+    # as phantom notes. A prominent *vocal* stem is the reliable tell that this
+    # is a produced song rather than an instrumental/synth track. Measured
+    # (chroma agreement with the source): mix-primary wins on the synth and game
+    # tracks (0.884 vs 0.874, 0.890 vs 0.882) but mix-only wins on the pop song
+    # with vocals (0.850 vs 0.820). So when vocals are a real part of the mix,
+    # take pitched notes from the mix alone.
+    mix_only = cfg.pitched_from_mix_only
+    if cfg.auto_dense_mix_only and cfg.separate and not mix_only:
+        vocals_lvl = result.stem_levels.get("vocals", -99.0)
+        if vocals_lvl > loudest - cfg.vocal_active_db:
+            mix_only = True
+            log.info("vocals active (%.0f dB, loudest %.0f dB): pitched from mix "
+                     "only", vocals_lvl, loudest)
+
     tracks: List[Track] = []
     for name, stem_cfg in stem_cfgs:
         stem = stems.get(name)
@@ -177,7 +195,7 @@ def convert(input_path: str, output_path: Optional[str] = None,
         # Pitched-from-mix-only: keep just the drum stem here and let the mix
         # pass supply every pitched note, skipping the artefact-prone pitched
         # stems entirely.
-        if cfg.pitched_from_mix_only and stem_cfg.method != "drums":
+        if mix_only and stem_cfg.method != "drums":
             continue
         level = result.stem_levels.get(name, -99.0)
         if level < SILENCE_DBFS:
