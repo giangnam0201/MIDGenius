@@ -150,7 +150,9 @@ def default_stems() -> Dict[str, StemConfig]:
             max_midi=104,
             onset_threshold=0.6,
             frame_threshold=0.30,
-            min_note_ms=64.0,
+            # 45 ms, down from 64: recovers short notes the longer floor cut,
+            # measured +0.7 aria F1 (recall up) with the dense recording neutral.
+            min_note_ms=45.0,
             harmonic_suppression=True,
             min_confidence=0.16,
             max_polyphony=8,
@@ -216,6 +218,7 @@ class Config:
         default_factory=lambda: StemConfig(
             name="mixdown", method="poly", program=GM_ACOUSTIC_GRAND,
             onset_threshold=0.6, frame_threshold=0.30, max_polyphony=10,
+            min_note_ms=45.0,
         )
     )
 
