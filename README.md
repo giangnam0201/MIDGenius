@@ -68,6 +68,14 @@ recovering masked notes, which is why mix-*only* is not the answer either
 restores the old stem-union; a `--min-stem-confidence` floor (default 0.3) tunes
 how much stem detail is trusted.
 
+Which of these is right depends on the material, so the choice is **made per
+track**: a prominent vocal stem marks a dense produced song, where the stems are
+artefact-ridden and the mix alone is cleaner, so pitched notes are taken from the
+mix (the lead vocal kept for its melody); an instrumental or synth track keeps
+the mix-primary stem additions. Measured chroma agreement with the source — synth
+0.884 vs 0.874, game 0.890 vs 0.882, pop-with-vocals 0.820 vs **0.850** — each
+lands on the better strategy automatically.
+
 **Lighter, too.** The bass stem is transcribed with the same ONNX Basic Pitch
 model rather than pYIN: pYIN's Viterbi over a whole track was the heaviest stage
 in the pipeline (over half the transcription time) *and* less accurate on
