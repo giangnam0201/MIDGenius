@@ -48,17 +48,31 @@ mallets, koto, music box) into the *drum* stem. The pitched stems kept the
 sustain and lost the attacks — and attacks are exactly what onset detection
 needs. Removing the drum stem, only 26 dB down, **halved** pitched F1.
 
-So the untouched mix is transcribed as well, and its notes are folded in
-wherever the stems missed them. The mix keeps every attack and the full
-harmonic context; the stems find notes the mix masks. Measured:
+So the untouched mix is transcribed as well. But *how* the mix and the stems
+are combined turned out to matter as much as combining them at all. The first
+design took the stems as the base and let the mix fill gaps — which imports the
+stems' artefact notes and over-produces badly (nearly 2× the real note count on
+a clean synth track). Taking the **mix as the base** instead, and adding back
+only stem notes confident enough to be real and that the mix missed, keeps the
+mix's precision while still recovering the notes a dense mix masks:
 
-| pitched F1 | per-stem | mix only | **mix ∪ stems** |
-|---|---|---|---|
-| soft synth pads | 28.1% | 55.3% | **50.6%** |
-| chiptune | 51.5% | 47.3% | **56.2%** |
+| pitched F1 | stem-union (old) | **mix-primary** |
+|---|---|---|
+| aria (synth, rendered 1:1) | 55.8% | **60.7%** |
+| graze (dense real recording) | 55.1% | 54.6% |
 
-Either source alone has a catastrophic case. The union does not, which matters
-more than its slightly better average. (`--no-mix-pass` disables it.)
+The clean track gains ~5 points (precision *and* recall up) and the dense
+recording is essentially unchanged — separation still earns its keep there,
+recovering masked notes, which is why mix-*only* is not the answer either
+(`--pitched-from-mix-only` drops graze's recall by 13 points). `--no-mix-primary`
+restores the old stem-union; a `--min-stem-confidence` floor (default 0.3) tunes
+how much stem detail is trusted.
+
+**Lighter, too.** The bass stem is transcribed with the same ONNX Basic Pitch
+model rather than pYIN: pYIN's Viterbi over a whole track was the heaviest stage
+in the pipeline (over half the transcription time) *and* less accurate on
+Demucs' bass stem. Switching roughly halved conversion time and raised accuracy.
+No TensorFlow, no per-note dynamic programming — the whole pipeline stays light.
 
 ### Thresholds adapt to the material
 
@@ -229,8 +243,8 @@ counts only if its onset is within 50 ms and its pitch within 50 cents.
 
 | pair | precision | recall | **pitched F1** | drums F1 |
 |---|---|---|---|---|
-| **aria** — 8.5 min, audio rendered 1:1 from its own MIDI | 56.5% | 55.0% | **55.8%** | 45.6% |
-| **graze** — 3 min recording vs a separate human arrangement | 66.2% | 47.2% | **55.1%** | 49.5% |
+| **aria** — 8.5 min, audio rendered 1:1 from its own MIDI | 59.5% | 61.9% | **60.7%** | 52.9% |
+| **graze** — 3 min recording vs a separate human arrangement | 63.2% | 48.1% | **54.6%** | 49.5% |
 
 `aria` is the stricter test: because the audio is rendered from the reference,
 alignment is exact (the search returns 0.00 s) and *every* discrepancy is the
