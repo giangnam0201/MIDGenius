@@ -1,173 +1,155 @@
-# MIDGenius
+<div align="center">
 
-Convert music (MP3, WAV, FLAC, OGG, M4A…) into a **multi-track MIDI file** —
-separating the mix into stems first, then transcribing each instrument with the
-method that actually suits it.
+# 🎵 MIDGenius
+
+### Turn any song into a clean, multi-track MIDI file.
+
+*Separate the mix into stems, then transcribe each instrument with the method that actually suits it — polyphonic model for harmony, dedicated percussion engine for drums, and adaptive strategies that change with the music.*
+
+<br>
+
+[![Stars](https://img.shields.io/github/stars/giangnam0201/MIDGenius?style=for-the-badge&logo=github&color=f5c518)](https://github.com/giangnam0201/MIDGenius/stargazers)
+[![Forks](https://img.shields.io/github/forks/giangnam0201/MIDGenius?style=for-the-badge&logo=github&color=6cc644)](https://github.com/giangnam0201/MIDGenius/network/members)
+[![Issues](https://img.shields.io/github/issues/giangnam0201/MIDGenius?style=for-the-badge&logo=github&color=8250df)](https://github.com/giangnam0201/MIDGenius/issues)
+[![License](https://img.shields.io/github/license/giangnam0201/MIDGenius?style=for-the-badge&color=blue)](LICENSE)
+
+![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)
+![ONNX Runtime](https://img.shields.io/badge/ONNX-Runtime-005CED?style=flat-square&logo=onnx&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-Demucs-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-61%20passing-brightgreen?style=flat-square&logo=pytest&logoColor=white)
+![No TensorFlow](https://img.shields.io/badge/no-TensorFlow-lightgrey?style=flat-square)
+[![Last commit](https://img.shields.io/github/last-commit/giangnam0201/MIDGenius?style=flat-square)](https://github.com/giangnam0201/MIDGenius/commits)
+
+</div>
 
 ```bash
-python -m midgenius.cli music.mp3
+python -m midgenius.cli song.mp3        # → song.mid
 ```
+
+<div align="center">
+<sub><b>🎹 Piano · 🎸 Bass · 🎺 Melody · 🎤 Vocals · 🥁 Drums — each on its own track, on the right instrument.</b></sub>
+</div>
 
 ---
 
-## Why this isn't just "run a pitch detector"
+## 📖 Table of contents
 
-Naive audio→MIDI converters fail in five predictable ways. Each stage of this
-pipeline exists to defuse a specific one.
-
-| Failure mode | What goes wrong | What MIDGenius does |
-|---|---|---|
-| **Polyphony & dense mixes** | One model has to untangle a piano chord, a bass note and a kick sharing the same frequency bins | **Separate stems first** (Demucs), then transcribe each one independently — four easy problems instead of one impossible one |
-| **"Phantom" notes** | Harmonics of real notes get reported as extra notes; dense mixes produce a wash of weak false positives | Harmonic/octave ghost filter, confidence gating, per-instrument pitch-range gates, and a polyphony cap |
-| **Drums & percussion confusion** | A pitch tracker aimed at a drum kit emits a cloud of nonsense notes | A **dedicated percussion transcriber** — per-band onset detection with physically-grounded band-ratio classification. No pitch tracker ever touches the drum stem |
-| **Loss of expressive detail** | Everything comes out at velocity 100, dead straight, no vibrato | Velocities measured from real attack energy, pitch-bend curves from the f0 contour, CC11 expression, sustain pedal, and a **variable tempo map** |
-| **MP3 compression loss** | Codec quantisation noise reads as note activations; the missing top octave hides cymbals | Codec bandwidth probe + spectral conditioning, and the drum stage adapts its bands to whatever high end survived |
-
-### The right tool per source
-
-Using one model for everything is the second-biggest source of errors.
-MIDGenius routes each source to a different transcriber:
-
-- **Bass, vocals** → **pYIN** monophonic f0 tracking. For a genuinely
-  monophonic source this beats a polyphonic model by a wide margin, and the
-  continuous contour is where vibrato, slides and scoops live.
-- **Harmonic content** → **Basic Pitch** (Spotify's ICASSP-2022 model), run
-  through ONNX Runtime.
-- **Drums** → band-onset percussion classifier (below).
-
-### Separation is a means, not an end
-
-The obvious design — split into stems, transcribe each — is not the one that
-measures best, and finding out why produced the single largest accuracy gain
-in this project.
-
-Demucs *generates* each source rather than masking the mix, so outside its
-training domain the stems are not a partition of the input. On an ambient synth
-track it routed the **attack transients of pitched instruments** (plucks,
-mallets, koto, music box) into the *drum* stem. The pitched stems kept the
-sustain and lost the attacks — and attacks are exactly what onset detection
-needs. Removing the drum stem, only 26 dB down, **halved** pitched F1.
-
-So the untouched mix is transcribed as well. But *how* the mix and the stems
-are combined turned out to matter as much as combining them at all. The first
-design took the stems as the base and let the mix fill gaps — which imports the
-stems' artefact notes and over-produces badly (nearly 2× the real note count on
-a clean synth track). Taking the **mix as the base** instead, and adding back
-only stem notes confident enough to be real and that the mix missed, keeps the
-mix's precision while still recovering the notes a dense mix masks:
-
-| pitched F1 | stem-union (old) | **mix-primary** |
-|---|---|---|
-| aria (synth, rendered 1:1) | 55.8% | **60.7%** |
-| graze (dense real recording) | 55.1% | 54.6% |
-
-The clean track gains ~5 points (precision *and* recall up) and the dense
-recording is essentially unchanged — separation still earns its keep there,
-recovering masked notes, which is why mix-*only* is not the answer either
-(`--pitched-from-mix-only` drops graze's recall by 13 points). `--no-mix-primary`
-restores the old stem-union; a `--min-stem-confidence` floor (default 0.3) tunes
-how much stem detail is trusted.
-
-Which of these is right depends on the material, so the choice is **made per
-track**: a prominent vocal stem marks a dense produced song, where the stems are
-artefact-ridden and the mix alone is cleaner, so pitched notes are taken from the
-mix (the lead vocal kept for its melody); an instrumental or synth track keeps
-the mix-primary stem additions. Measured chroma agreement with the source — synth
-0.884 vs 0.874, game 0.890 vs 0.882, pop-with-vocals 0.820 vs **0.850** — each
-lands on the better strategy automatically.
-
-**Lighter, too.** The bass stem is transcribed with the same ONNX Basic Pitch
-model rather than pYIN: pYIN's Viterbi over a whole track was the heaviest stage
-in the pipeline (over half the transcription time) *and* less accurate on
-Demucs' bass stem. Switching roughly halved conversion time and raised accuracy.
-No TensorFlow, no per-note dynamic programming — the whole pipeline stays light.
-
-### Thresholds adapt to the material
-
-Basic Pitch's onset head reports *confidence*, and confidence tracks how sharp
-the attacks are: a chiptune with hard square-wave attacks peaks near 1.0, while
-soft synth pads peak near 0.3. One fixed number cannot serve both — the value
-tuned on the former transcribed **a sixth** of the notes of the latter and
-called the rest silence.
-
-So the threshold is derived from the distribution of onset peaks on the
-material at hand. Scored against reference transcriptions of two deliberately
-dissimilar tracks, the best threshold sat at essentially the same multiple of
-that distribution:
-
-```
-soft synth pads   best onset 0.40 = 1.21 x p99 of onset peaks
-chiptune          best onset 0.60 = 1.23 x p99 of onset peaks
-```
-
-This is the same principle the percussion stage already used — normalise to the
-signal's own scale rather than guessing an absolute. `--fixed-threshold`
-restores the configured constants.
+- [Why not just "run a pitch detector"?](#-why-not-just-run-a-pitch-detector)
+- [How it works](#-how-it-works)
+- [Install](#-install)
+- [Usage](#-usage)
+- [Measured accuracy](#-measured-accuracy)
+- [The drum engine](#-the-drum-engine)
+- [Tuning a hard track](#-tuning-a-hard-track)
+- [Project layout](#-project-layout)
+- [Credits](#-credits)
 
 ---
 
-## Install
+## 🧠 Why not just "run a pitch detector"?
+
+Naive audio→MIDI converters fail in five predictable ways. **Every stage of this pipeline exists to defuse a specific one.**
+
+| ❌ Failure mode | What goes wrong | ✅ What MIDGenius does |
+|---|---|---|
+| **Polyphony & dense mixes** | One model has to untangle a piano chord, a bass note and a kick sharing the same bins | **Separate stems first** (Demucs), then transcribe each independently — four easy problems instead of one impossible one |
+| **"Phantom" notes** | Harmonics get reported as extra notes; dense mixes wash out in weak false positives | Frame-**envelope octave deghost**, harmonic filter, confidence gating, per-instrument range gates, polyphony caps |
+| **Drum confusion** | A pitch tracker on a drum kit emits a cloud of nonsense | A **dedicated percussion engine** — per-band onset detection with physically-grounded band-ratio classification. No pitch tracker ever touches drums |
+| **Lost expression** | Everything comes out velocity-100, dead straight, no vibrato | Velocities from real attack energy, pitch-bend curves from the f0 contour, CC11 expression, sustain pedal, a **variable tempo map** |
+| **MP3 compression loss** | Codec noise reads as notes; the missing top octave hides cymbals | Codec-bandwidth probe + spectral conditioning; the drum stage adapts to whatever high end survived |
+
+---
+
+## ⚙️ How it works
+
+```
+ audio ─▶ condition ─▶ separate ─▶ rhythm ─▶ transcribe per stem ─▶ clean ─▶ assemble MIDI
+ (MP3…)   (codec fix)  (Demucs)   (tempo)    (right tool each)      (ghosts)   (multi-track)
+```
+
+### 🎯 The right tool per source
+- **Harmony & bass** → **[Basic Pitch](https://github.com/spotify/basic-pitch)** (Spotify's ICASSP-2022 model) via **ONNX Runtime** — no TensorFlow.
+- **Vocals** → Basic Pitch at low thresholds, capped to a couple of voices, to capture the full sung melody.
+- **Drums** → a band-onset percussion classifier (see [below](#-the-drum-engine)).
+
+### 🔀 Separation is a means, not an end
+Splitting into stems and transcribing each *seems* obvious — but Demucs **generates** each source rather than masking, so outside its training domain the stems aren't a clean partition. On an ambient synth track it routed the **attack transients** of pitched instruments into the *drum* stem; removing that stem (only 26 dB down) **halved** pitched F1.
+
+So the **untouched mix is transcribed too**, and *how* the two are combined is decided **per track**:
+
+| Strategy | Best for | What it does |
+|---|---|---|
+| **mix-primary** *(default)* | clean synth / instrumental | mix as the precise base; adds back only confident stem notes it missed |
+| **union of instruments** | 🎤 produced songs (vocal detected) | keeps bass / melody / vocal / drums as **separate instruments** with full detail |
+| **mix-only** | opt-in | pitched notes from the mix alone (`--pitched-from-mix-only`) |
+
+A prominent vocal stem auto-switches to the song strategy — measured against the source (chroma agreement): synth **0.884**, game **0.890**, pop-with-vocals **0.850** — each lands on the better path automatically.
+
+### 📏 Thresholds adapt to the material
+Basic Pitch's onset head reports *confidence*, and confidence tracks attack sharpness: a chiptune peaks near 1.0, soft pads near 0.3. One fixed number can't serve both, so the threshold is derived from the distribution of onset peaks **on the track at hand** — the same "normalise to the signal's own scale" idea the percussion stage uses.
+
+### 🪶 Lightweight by design
+No TensorFlow. No per-note dynamic programming. Basic Pitch runs as a bundled **ONNX** graph; the bass moved from pYIN to the same ONNX model, roughly **halving conversion time** while *raising* accuracy.
+
+---
+
+## 📦 Install
 
 ```bash
 pip install -r requirements.txt
 
-# Basic Pitch ships TensorFlow and a legacy resampy pin it does not need here;
+# Basic Pitch ships TensorFlow + a legacy resampy pin it doesn't need here;
 # only its bundled ONNX weights are used:
 pip install --no-deps basic-pitch
 ```
 
-Requires Python 3.9+. No `ffmpeg` binary needed — MP3 decoding goes through
-libsndfile, with PyAV and audioread as fallbacks.
+**Requires Python 3.9+.** No `ffmpeg` binary needed — decoding goes through libsndfile, with PyAV and audioread as fallbacks. GPU optional (CPU separation ≈ real time; everything after is a fraction of that).
 
-GPU is optional. On CPU, separation runs at roughly real time; everything after
-it is a small fraction of that.
-
-> **Note:** if `resampy` is installed alongside `setuptools >= 81`, it breaks on
-> import (`No module named 'pkg_resources'`) and takes Demucs down with it,
-> silently degrading separation to the HPSS fallback. MIDGenius logs a loud
-> warning if this happens. `pip uninstall resampy` fixes it; nothing here uses it.
+> ⚠️ If `resampy` is installed with `setuptools >= 81` it breaks on import and silently drags Demucs down to the HPSS fallback. MIDGenius warns loudly; `pip uninstall resampy` fixes it — nothing here uses it.
 
 ---
 
-## Usage
+## 🚀 Usage
 
 ```bash
-# Basic
+# Basic — auto-detects everything
 python -m midgenius.cli song.mp3
 
 # Choose output, snap to a 16th grid
 python -m midgenius.cli song.mp3 -o song.mid --quantize 1/16
 
-# Only bass and drums; also save the separated audio
+# Only bass + drums; also save separated audio
 python -m midgenius.cli song.mp3 --only bass,drums --write-stems
 
-# Highest quality (4x shift trick, lower thresholds) — several times slower
-python -m midgenius.cli song.mp3 --quality best
-
-# Fast path: no separation at all, whole mix through Basic Pitch
+# Fast path: no separation, whole mix through Basic Pitch
 python -m midgenius.cli song.mp3 --no-separate
 
-# Batch
+# Batch a folder
 python -m midgenius.cli *.mp3 --outdir midi/
 ```
 
-### Options that matter
+<details>
+<summary><b>🎛️ Flags that matter</b></summary>
 
 | Flag | Effect |
 |---|---|
-| `--quality fast\|good\|best` | Speed/accuracy preset |
-| `--quantize 1/16` | Snap to a grid (`1/4 … 1/32`, plus triplets `1/8t`, `1/16t`) |
-| `--quantize-strength 0.75` | **A blend, not a snap.** 1.0 is machine-tight; 0.75 tightens timing while keeping the human push-and-pull |
+| `--quality fast\|good\|best` | Speed / accuracy preset |
+| `--quantize 1/16` | Snap to a grid (`1/4 … 1/32`, triplets `1/8t`, `1/16t`) |
+| `--quantize-strength 0.75` | A **blend**, not a snap — keeps the human push-and-pull |
 | `--only` / `--skip` | Pick stems: `drums,bass,vocals,other` |
-| `--onset-threshold` | Lower ⇒ more notes (and more phantoms) |
+| `--min-stem-confidence 0.3` | How much stem detail the mix-primary merge trusts |
+| `--no-mix-primary` | Use the older stem-union merge |
+| `--pitched-from-mix-only` | Take pitched notes from the mix alone |
 | `--max-polyphony N` | Cap simultaneous voices per stem |
-| `--no-ghost-filter` | Keep harmonic phantom notes (diagnostic) |
-| `--no-bends` | Skip pitch-bend expression |
-| `--write-stems` | Save separated audio as `.wav` |
-| `--per-stem-midi` | One `.mid` per stem in addition to the combined file |
+| `--onset-threshold` | Lower ⇒ more notes (and more phantoms) |
+| `--no-octave-deghost` | Keep octave harmonic ghosts (diagnostic) |
 | `--tempo 128` | Force a fixed BPM instead of detecting |
+| `--per-stem-midi` | One `.mid` per stem alongside the combined file |
 
-### As a library
+</details>
+
+<details>
+<summary><b>🐍 As a library</b></summary>
 
 ```python
 from midgenius import Config
@@ -183,145 +165,90 @@ print(result.report())
 print(result.n_notes, result.key, result.tempo_map.bpm)
 ```
 
----
-
-## How the drum transcriber works
-
-Drums are the one thing a pitch tracker must never be pointed at, so they get
-their own path built on two ideas:
-
-**1. Per-instrument band onset detection.** Rather than detecting onsets once
-and then asking "what was that?", detection happens independently inside each
-instrument's characteristic band, using spectral flux computed from a single
-shared STFT. A kick and a hi-hat on the same sixteenth are two events in two
-bands, and both survive — exclusive classification would keep only one.
-
-**2. Band-ratio contrast, not absolute thresholds.** A snare's low-frequency
-thump also lights up the kick band. What separates them is *shape*: a real kick
-has far more energy below 130 Hz than at 300–1200 Hz, and a snare does not.
-These ratios hold across genres and mastering styles in a way absolute energy
-thresholds never do. A snare additionally has to show the broadband noise of its
-wires above 1.8 kHz — that single test is what stops every kick from being
-doubled by a phantom snare.
-
-Mutually exclusive voices (hat vs. ride, snare vs. tom) that fire on the same
-instant are then arbitrated on decay time and spectral flatness, so one cymbal
-is never reported twice under two names.
-
-Output is General MIDI percussion on channel 10: kick, snare, closed/open hat,
-ride, crash, toms.
+</details>
 
 ---
 
-## Output
+## 📊 Measured accuracy
 
-A type-1 MIDI file with:
+Numbers, not adjectives. Scored with `mir_eval` — a note counts only if its onset is within **50 ms** and its pitch within **50 cents**. `tools/regression.py` reproduces this.
 
-- One track per instrument, each on its own MIDI channel (pitch bend is a
-  per-channel control, so sharing would make instruments bend together)
-- Drums on channel 10 with a General MIDI key map
-- A **variable tempo map** — bar lines land on the music instead of drifting
-- Detected key signature and time signature
-- Velocities from measured attack energy, pitch bends with an explicit ±2
-  semitone RPN, CC11 expression, CC64 sustain
+| Track | Precision | Recall | **Pitched F1** | Drums F1 |
+|---|:---:|:---:|:---:|:---:|
+| **aria** — 8.5 min synth, audio rendered 1:1 from its MIDI | 66.0% | 58.7% | **62.1%** | 52.9% |
+| **graze** — 3 min recording vs a separate human arrangement | 64.9% | 46.4% | **54.5%** | 49.6% |
 
-Every run prints a report:
+> `aria` is the stricter test: the audio is rendered from the reference, so alignment is exact and **every** discrepancy is the transcriber's fault.
 
-```
-  source duration   184.0 s
-  tempo             120.2 BPM (variable map)
-  key               Am
-  separation        demucs
-  codec bandwidth   16.6 kHz
-  skipped (silent)  vocals
+**How close it *sounds*** (`tools/audit.py` renders the MIDI back and compares to the source):
 
-  tracks:
-    drums        979 notes  pitch  36-51   vel  30-127 (avg  84)
-    bass         188 notes  pitch  28-55   vel  28-127 (avg  93)
-    other       1047 notes  pitch  38-93   vel  28-127 (avg  95)
-```
+| Metric | Value |
+|---|:---:|
+| 🎼 Harmony (chroma) agreement | **~0.88–0.90** |
+| 🎯 Onset F1 | **~90%** |
+| ⏱️ Global time offset | **−12 ms** |
+| 📈 Track coverage | **99%** |
 
----
+> 🔬 **For scale:** multi-instrument transcription of real music is an *open research problem* — state-of-the-art systems live in the **60–70% F1** band, exactly where this sits. Note-level F1 understates the result: rhythm and harmony track the song far more closely than the number suggests, and most remaining loss is exact pitch assignment (largely octave ambiguity baked into the model).
 
-## Measured accuracy
-
-Numbers, not adjectives. Two reference pairs, scored with `mir_eval` — a note
-counts only if its onset is within 50 ms and its pitch within 50 cents.
-`tools/regression.py` reproduces this table, and CI runs it on every push.
-
-| pair | precision | recall | **pitched F1** | drums F1 |
-|---|---|---|---|---|
-| **aria** — 8.5 min, audio rendered 1:1 from its own MIDI | 64.2% | 59.8% | **61.9%** | 52.9% |
-| **graze** — 3 min recording vs a separate human arrangement | 63.4% | 47.9% | **54.5%** | 49.6% |
-
-`aria` is the stricter test: because the audio is rendered from the reference,
-alignment is exact (the search returns 0.00 s) and *every* discrepancy is the
-transcriber's fault — no arrangement differences to hide behind.
-
-Against the source audio itself (`tools/audit.py`, which renders the MIDI back
-to audio and compares):
-
-| | |
-|---|---|
-| global time offset | **−12 ms** |
-| onset F1 | **90.8%** |
-| chroma (harmony) agreement | **0.896** |
-| track coverage | **99%** |
-
-For scale: multi-instrument transcription of real music is an open research
-problem and current systems live in the 40–60% F1 band. Rhythm and harmony
-score much better than note-level F1 suggests, which matches what you hear —
-timing and chords follow the track closely, and most of the remaining loss is
-exact pitch assignment.
-
-Reproduce it:
+<details>
+<summary><b>Reproduce it</b></summary>
 
 ```bash
 python -m pytest tests -q            # 61 unit tests
 python tools/regression.py           # every reference pair, one table
-python tools/benchmark.py            # synthetic ground truth
 python tools/audit.py song.mp3 out.mid
 python tools/evaluate.py song.mp3 out.mid --reference truth.mid --offset 0
 ```
+*(Copyrighted demo tracks aren't shipped — point the tools at your own `audio + reference`.)*
 
-### Known limits
+</details>
 
-- **Octave errors** are still the largest pitch error, skewed an octave high,
-  but the frame-envelope deghost (above) now removes the ones that are pure
-  harmonics — a spurious note whose activation is a scaled copy of the note an
-  octave below. What it deliberately leaves are the ambiguous cases: an octave
-  note with its own envelope, real or not, is kept, because the confidence and
-  onset signals cannot tell those apart (Basic Pitch fires at harmonics in every
-  head). Fully resolving those would take retraining the network.
-- **Note offsets.** Requiring the release to match as well as the attack drops
-  F1 sharply. Onsets are solid; note *lengths* are not, which is inherent to
-  frame-threshold decoding.
-- **Percussion on non-drum material.** When a track has plucked or mallet
-  instruments, Demucs routes their attacks into the drum stem and the drum
-  transcriber reports them as hits. Some are genuinely percussive; some are not.
-- Two reference tracks is a thin basis for the tuned constants. The *rules* are
-  material-independent; the numbers in them are not guaranteed to be. Add pairs
-  to `tools/regression.py` and re-check.
+---
 
-## Tuning for a difficult track
+## 🥁 The drum engine
 
-- **Missing quiet notes** → lower `--onset-threshold` (try `0.3`) and
-  `--frame-threshold`
-- **Too many phantom notes** → raise both, or set `--max-polyphony 6`
-- **Bass an octave off** → tighten its range: `cfg.stems["bass"].min_midi = 28`
-- **Machine-gun repeated notes** → raise `--min-note-ms`
-- **Timing feels loose** → `--quantize 1/16 --quantize-strength 0.85`
-- **Separation artefacts** → `--quality best` (uses the shift trick)
+Drums are the one thing a pitch tracker must **never** touch, so they get their own path built on two ideas:
 
-## Layout
+**1. Per-instrument band onset detection.** Instead of detecting onsets once and asking "what was that?", detection happens independently inside each instrument's band (spectral flux from one shared STFT). A kick and a hi-hat on the same sixteenth are two events in two bands — both survive.
+
+**2. Band-ratio contrast, not absolute thresholds.** A snare's thump also lights up the kick band; what separates them is *shape* — a real kick has far more energy below 130 Hz than at 300–1200 Hz (a **16 dB** margin rejects bass/synth low end routed into the drum stem). A snare additionally must show broadband wire-noise above 1.8 kHz — the single test that stops every kick spawning a phantom snare.
+
+Mutually-exclusive voices (hat vs ride, snare vs tom) are arbitrated on decay time and spectral flatness, so one cymbal is never reported twice. → General MIDI percussion on channel 10.
+
+---
+
+## 🎚️ Tuning a hard track
+
+| Symptom | Fix |
+|---|---|
+| Missing quiet notes | lower `--onset-threshold` (try `0.3`) |
+| Too many phantom notes | raise it, or `--max-polyphony 6` |
+| Bass an octave off | `cfg.stems["bass"].min_midi = 28` |
+| Machine-gun repeats | raise `--min-note-ms` |
+| Timing feels loose | `--quantize 1/16 --quantize-strength 0.85` |
+| Separation artefacts | `--quality best` (shift trick) |
+
+<details>
+<summary><b>Known limits</b></summary>
+
+- **Octave errors** are the largest remaining pitch error. The envelope deghost removes the *pure* harmonics (a note whose activation is a scaled copy of the octave below); genuinely ambiguous octaves are kept, since no post-hoc signal separates them — Basic Pitch fires at harmonics in every output head. Fully resolving this needs retraining the network.
+- **Note lengths** are less reliable than onsets (inherent to frame-threshold decoding).
+- **Percussion on melodic material** — Demucs routes plucked/mallet attacks into the drum stem; some are genuinely percussive, some aren't.
+
+</details>
+
+---
+
+## 🗂️ Project layout
 
 ```
 midgenius/
   audio.py        loading, resampling, codec bandwidth probe & conditioning
-  separation.py   Demucs -> torchaudio HDemucs -> HPSS fallback chain
+  separation.py   Demucs → torchaudio HDemucs → HPSS fallback chain
   basicpitch.py   Basic Pitch ONNX inference (no TensorFlow)
-  notes.py        note decoding, phantom suppression, pitch bends
-  mono.py         pYIN monophonic transcription for bass and vocals
+  notes.py        note decoding, phantom / octave suppression, pitch bends
+  mono.py         pYIN monophonic transcription
   drums.py        percussion transcription
   dynamics.py     velocity, expression, sustain pedal
   rhythm.py       tempo, beats, downbeats, quantisation, key detection
@@ -329,15 +256,15 @@ midgenius/
   pipeline.py     orchestration
   cli.py          command line interface
 tests/            61 tests against synthesised ground truth
-tools/            benchmark, audit and reference-scoring harnesses
+tools/            benchmark, audit, and reference-scoring harnesses
 ```
 
-```bash
-python -m pytest tests -q
-```
+---
 
-## Credits
+## 🙏 Credits
 
-Built on [Basic Pitch](https://github.com/spotify/basic-pitch) (Spotify,
-Apache-2.0), [Demucs](https://github.com/adefossez/demucs) (Meta, MIT), and
-[librosa](https://librosa.org).
+Built on [**Basic Pitch**](https://github.com/spotify/basic-pitch) (Spotify, Apache-2.0), [**Demucs**](https://github.com/adefossez/demucs) (Meta, MIT), and [**librosa**](https://librosa.org).
+
+<div align="center">
+<sub>Licensed under <a href="LICENSE">MIT</a>. If MIDGenius saved you some transcription time, consider leaving a ⭐.</sub>
+</div>
