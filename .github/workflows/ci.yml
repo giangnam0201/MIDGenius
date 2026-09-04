@@ -10,7 +10,10 @@ on:
     inputs:
       audio:
         description: "Audio file in the repo to convert"
-        default: "music.mp3"
+        default: "aria.mp3"
+      reference:
+        description: "Ground-truth MIDI to score against"
+        default: "aria.mid"
       quantize:
         description: "Quantise grid (off, 1/8, 1/16, 1/32)"
         default: "off"
@@ -93,7 +96,7 @@ jobs:
 
       - name: Convert the track
         env:
-          AUDIO: ${{ github.event.inputs.audio || 'music.mp3' }}
+          AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
           QUANTIZE: ${{ github.event.inputs.quantize || 'off' }}
           QUALITY: ${{ github.event.inputs.quality || 'good' }}
         run: |
@@ -103,18 +106,21 @@ jobs:
 
       - name: Audit the result against the source audio
         env:
-          AUDIO: ${{ github.event.inputs.audio || 'music.mp3' }}
+          AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
         run: |
           python tools/audit.py "$AUDIO" artifacts/output.mid \
             --render artifacts/preview.wav | tee artifacts/audit.txt
 
       - name: Score against the reference transcription
-        if: hashFiles('reference.mid') != ''
         env:
-          AUDIO: ${{ github.event.inputs.audio || 'music.mp3' }}
+          AUDIO: ${{ github.event.inputs.audio || 'aria.mp3' }}
+          REFERENCE: ${{ github.event.inputs.reference || 'aria.mid' }}
         run: |
+          # The audio is rendered from the reference, so alignment is known
+          # exactly: no search, offset 0, one pass. Every discrepancy is ours.
           python tools/evaluate.py "$AUDIO" artifacts/output.mid \
-            --reference reference.mid | tee artifacts/evaluate.txt
+            --reference "$REFERENCE" --offset 0 --passes 1 \
+            | tee artifacts/evaluate.txt
 
       - name: Summary
         if: always()
