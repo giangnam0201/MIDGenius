@@ -15,3 +15,7 @@ out/
 # Local scratch
 scratch/
 tmp/
+
+# Copyrighted demo audio/MIDI - not distributed
+*.mp3
+*.mid
