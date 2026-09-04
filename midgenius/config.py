@@ -220,6 +220,9 @@ class Config:
     # loudest stem the vocals must sit to count as "really there".
     auto_dense_mix_only: bool = True
     vocal_active_db: float = 15.0
+    # In mix-only mode, still transcribe the (cleanly separated) vocal stem so
+    # the lead melody gets its own line instead of being lost in the mix.
+    mix_only_keep_vocals: bool = True
     # Mix-primary union: take the mix as the precise base and add back only
     # confident stem notes the mix missed. Keeps mix precision on clean material
     # while still recovering masked notes on dense mixes. Measured on both

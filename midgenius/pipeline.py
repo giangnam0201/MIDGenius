@@ -194,8 +194,12 @@ def convert(input_path: str, output_path: Optional[str] = None,
             continue
         # Pitched-from-mix-only: keep just the drum stem here and let the mix
         # pass supply every pitched note, skipping the artefact-prone pitched
-        # stems entirely.
-        if mix_only and stem_cfg.method != "drums":
+        # stems entirely. The vocal stem is the exception worth keeping: Demucs
+        # isolates a lead vocal cleanly, and its melody is the perceptual hook of
+        # a song, so it earns its own clean line rather than being left to the
+        # mix to find under everything else.
+        if (mix_only and stem_cfg.method != "drums"
+                and not (cfg.mix_only_keep_vocals and name == "vocals")):
             continue
         level = result.stem_levels.get(name, -99.0)
         if level < SILENCE_DBFS:
