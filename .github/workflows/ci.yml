@@ -108,6 +108,14 @@ jobs:
           python tools/audit.py "$AUDIO" artifacts/output.mid \
             --render artifacts/preview.wav | tee artifacts/audit.txt
 
+      - name: Score against the reference transcription
+        if: hashFiles('reference.mid') != ''
+        env:
+          AUDIO: ${{ github.event.inputs.audio || 'music.mp3' }}
+        run: |
+          python tools/evaluate.py "$AUDIO" artifacts/output.mid \
+            --reference reference.mid | tee artifacts/evaluate.txt
+
       - name: Summary
         if: always()
         run: |
