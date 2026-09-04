@@ -76,6 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="cap simultaneous notes per pitched stem (0 = unlimited)")
     g.add_argument("--no-bends", action="store_true",
                    help="do not write pitch-bend expression")
+    g.add_argument("--harmonic-ratio", type=float, default=None,
+                   help="octave/harmonic ghost is cut if this much weaker than "
+                        "its parent (higher = more aggressive; default 0.28)")
     g.add_argument("--no-ghost-filter", action="store_true",
                    help="keep harmonic/octave phantom notes")
     g.add_argument("--fixed-threshold", action="store_true",
@@ -171,6 +174,8 @@ def config_from_args(args: argparse.Namespace) -> Config:
             s.pitch_bend = False
         if args.no_ghost_filter:
             s.harmonic_suppression = False
+        if args.harmonic_ratio is not None:
+            s.harmonic_ratio = args.harmonic_ratio
         if args.melodia:
             s.melodia_trick = True
 
