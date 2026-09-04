@@ -446,6 +446,103 @@ def suppress_harmonic_ghosts(notes: List[Note], ratio: float = 0.28,
     return kept
 
 
+def correct_octaves(post: Posteriorgram, notes: List[Note],
+                    sub_ratio: float = 0.80, onset_ratio: float = 0.50,
+                    min_pitch: int = 40) -> List[Note]:
+    """Pull octave-too-high detections down to their true fundamental.
+
+    Basic Pitch's characteristic error is reporting a note an octave above where
+    it sounds: when the fundamental is weak (a missing-fundamental timbre, or a
+    note masked in a chord) but its second harmonic is strong, the peak-picker
+    latches onto ``p + 12``. Left alone, each such note is scored twice wrong -
+    a false positive at ``p + 12`` and a false negative at ``p`` - so it is the
+    most expensive single error class on soft, sustained material.
+
+    For every detected note at pitch ``p`` this compares the note-head evidence
+    at ``p`` with the evidence an octave below over the same frames. The note is
+    moved down a octave when
+
+      * the lower octave carries at least ``sub_ratio`` of the note-head energy
+        at ``p`` (a real, not incidental, presence),
+      * an onset actually fires there near the attack (``onset_ratio`` of the
+        original), so we are moving to a genuine note start rather than into the
+        middle of a held sub-harmonic, and
+      * no already-detected note occupies ``p - 12`` at that time (otherwise the
+        octave pair is real polyphony, not an error).
+
+    Restricted to ``p >= min_pitch``: below that the "octave below" is often out
+    of an instrument's range and the test misfires.
+    """
+    if post.n_frames == 0 or not notes:
+        return notes
+
+    note_act = post.note
+    onset_act = post.onset
+    times = post.times
+    n_bins = note_act.shape[1]
+
+    # Occupancy: for a quick "is p-12 already taken here" test, index note
+    # spans by pitch.
+    by_pitch: dict = {}
+    for i, n in enumerate(notes):
+        by_pitch.setdefault(n.pitch, []).append((n.start, n.end))
+    for v in by_pitch.values():
+        v.sort()
+
+    def occupied(pitch: int, s: float, e: float) -> bool:
+        for a, b in by_pitch.get(pitch, ()):  # small lists in practice
+            if a < e and s < b:
+                return True
+        return False
+
+    moved = 0
+    for n in notes:
+        if n.pitch < min_pitch:
+            continue
+        p_bin = n.pitch - MIDI_OFFSET
+        if p_bin >= n_bins:
+            continue
+        s = int(np.clip(np.searchsorted(times, n.start), 0, post.n_frames - 1))
+        e = int(np.clip(np.searchsorted(times, n.end), s + 1, post.n_frames))
+        e_p = float(note_act[s:e, p_bin].mean())
+        if e_p <= 1e-6:
+            continue
+        a0 = max(0, s - 2)
+        a1 = min(post.n_frames, s + 3)
+        on_p = float(onset_act[a0:a1, p_bin].max())
+
+        # Consider one and two octaves below. Basic Pitch's harmonic false
+        # notes land at +12 and +24 above the fundamental. Prefer the deepest
+        # candidate that clears the tests, so a note two octaves high is pulled
+        # all the way down rather than one step at a time.
+        best = None
+        for down in (24, 12):
+            sub_bin = p_bin - down
+            if sub_bin < 0:
+                continue
+            e_sub = float(note_act[s:e, sub_bin].mean())
+            if e_sub < sub_ratio * e_p:
+                continue
+            if onset_ratio > 0.0:
+                on_sub = float(onset_act[a0:a1, sub_bin].max())
+                if on_sub < onset_ratio * max(on_p, 1e-6):
+                    continue
+            if occupied(n.pitch - down, n.start, n.end):
+                continue
+            best = down
+            break
+        if best is None:
+            continue
+        # Keep occupancy current so we do not stack two moved notes onto one slot.
+        by_pitch.setdefault(n.pitch - best, []).append((n.start, n.end))
+        n.pitch -= best
+        moved += 1
+
+    if moved:
+        log.debug("octave correction pulled %d notes down an octave", moved)
+    return notes
+
+
 def drop_low_confidence(notes: List[Note], min_confidence: float) -> List[Note]:
     if min_confidence <= 0:
         return notes

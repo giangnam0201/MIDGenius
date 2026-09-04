@@ -174,6 +174,11 @@ def convert(input_path: str, output_path: Optional[str] = None,
         stem = stems.get(name)
         if stem is None or not stem_cfg.enabled:
             continue
+        # Pitched-from-mix-only: keep just the drum stem here and let the mix
+        # pass supply every pitched note, skipping the artefact-prone pitched
+        # stems entirely.
+        if cfg.pitched_from_mix_only and stem_cfg.method != "drums":
+            continue
         level = result.stem_levels.get(name, -99.0)
         if level < SILENCE_DBFS:
             log.info("skipping %r: silent (%.0f dBFS)", name, level)
@@ -218,7 +223,10 @@ def convert(input_path: str, output_path: Optional[str] = None,
         timings["transcribe:mix"] = time.time() - t0
         log.info("%-8s %4d notes (%.1fs)", "mix", len(mix_track.notes),
                  timings["transcribe:mix"])
-        tracks = _merge_pitched_sources(tracks, mix_track)
+        if cfg.mix_primary and mix_track.notes:
+            tracks = _merge_mix_primary(tracks, mix_track, cfg.min_stem_confidence)
+        else:
+            tracks = _merge_pitched_sources(tracks, mix_track)
 
     if not tracks:
         raise RuntimeError(
@@ -363,6 +371,10 @@ def _transcribe_poly(y: np.ndarray, sr: int, cfg: StemConfig) -> List[Note]:
         energy_tolerance=cfg.energy_tolerance)
 
     notes = N.drop_low_confidence(notes, cfg.min_confidence)
+    if cfg.octave_correction:
+        notes = N.correct_octaves(post, notes,
+                                  sub_ratio=cfg.octave_sub_ratio,
+                                  onset_ratio=cfg.octave_onset_ratio)
     if cfg.harmonic_suppression:
         notes = N.suppress_harmonic_ghosts(notes, ratio=cfg.harmonic_ratio)
     notes = N.merge_repeats(notes)
@@ -395,6 +407,57 @@ def _stem_configs(cfg: Config, stems: Dict[str, A.Audio]) -> List[Tuple[str, Ste
             sc = cfg.stems.get(name, cfg.mixdown_stem)
             out.append((name, StemConfig(**{**sc.__dict__, "name": name})))
     return out
+
+
+def _covered(index: Dict[int, List[float]], pitch: int, start: float,
+             tol: float) -> bool:
+    starts = index.get(pitch)
+    if not starts:
+        return False
+    i = int(np.searchsorted(starts, start))
+    near = min((abs(starts[j] - start) for j in (i - 1, i)
+               if 0 <= j < len(starts)), default=1e9)
+    return near <= tol
+
+
+def _merge_mix_primary(tracks: List[Track], mix_track: Track,
+                       min_stem_conf: float, tol: float = 0.05) -> List[Track]:
+    """Mix-primary union: the mix is the precise base, stems only add back.
+
+    The stem union over-produces on clean material (Demucs artefacts read as
+    notes) but recovers masked notes on dense mixes. Taking the mix as the base
+    keeps its precision, and adding only *confident* stem notes the mix missed
+    recovers the masked ones without importing the artefact phantoms - the best
+    of both, rather than choosing per track.
+    """
+    drums = [t for t in tracks if t.is_drum]
+    pitched = [t for t in tracks if not t.is_drum]
+
+    mix_index: Dict[int, List[float]] = {}
+    for n in mix_track.notes:
+        mix_index.setdefault(n.pitch, []).append(n.start)
+    for v in mix_index.values():
+        v.sort()
+
+    added = 0
+    kept_stem: List[Note] = []
+    for tr in pitched:
+        for n in tr.notes:
+            if n.confidence < min_stem_conf:
+                continue
+            if _covered(mix_index, n.pitch, n.start, tol):
+                continue
+            kept_stem.append(n)
+            added += 1
+
+    harmony = Track(name="harmony", program=(pitched[0].program if pitched else 0),
+                    is_drum=False)
+    harmony.notes = list(mix_track.notes) + kept_stem
+    harmony.sort()
+    harmony.notes = N.trim_overlaps(harmony.notes)
+    log.info("mix-primary: %d mix notes + %d confident stem notes recovered",
+             len(mix_track.notes), added)
+    return drums + [harmony]
 
 
 def _merge_pitched_sources(tracks: List[Track], mix_track: Track,

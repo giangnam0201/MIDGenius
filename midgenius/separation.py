@@ -18,6 +18,7 @@ Backends, in order of preference:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from typing import Dict, List, Optional
@@ -29,6 +30,67 @@ from midgenius.audio import Audio, resample
 log = logging.getLogger("midgenius.separation")
 
 STEM_NAMES = ("drums", "bass", "other", "vocals")
+
+
+def _set_threads() -> None:
+    """Let torch use every core. Demucs on CPU is single-threaded otherwise,
+    which leaves three of four cores idle and quadruples separation time."""
+    try:
+        import torch
+        n = os.cpu_count() or 1
+        torch.set_num_threads(n)
+    except Exception:
+        pass
+
+
+# --------------------------------------------------------------------------
+# stem cache (opt-in via MIDGENIUS_STEM_CACHE)
+# --------------------------------------------------------------------------
+# Separation is deterministic and by far the slowest stage. When tuning the
+# *transcription* that follows it, re-separating the same audio every run is
+# pure waste. With the cache enabled, the stems are computed once and reloaded
+# from disk keyed on the exact audio and parameters. Off by default so normal
+# runs and the test suite behave exactly as before.
+
+def _cache_dir() -> Optional[str]:
+    v = os.environ.get("MIDGENIUS_STEM_CACHE")
+    if not v or v == "0":
+        return None
+    d = v if v not in ("1", "true", "yes") else os.path.join(
+        os.path.expanduser("~"), ".cache", "midgenius", "stems")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _cache_key(audio: Audio, model_name: str, shifts: int, overlap: float,
+               segment: Optional[float]) -> str:
+    h = hashlib.md5()
+    h.update(np.ascontiguousarray(audio.data, dtype=np.float32).tobytes())
+    h.update(("%s|%d|%d|%.4f|%s|%s" % (model_name, audio.sr, shifts, overlap,
+                                       segment, audio.data.shape)).encode())
+    return h.hexdigest()
+
+
+def _cache_load(path: str, sr: int) -> Optional[Dict[str, Audio]]:
+    if not os.path.exists(path):
+        return None
+    try:
+        z = np.load(path)
+        names = [k for k in z.files if k != "__sr__"]
+        cached_sr = int(z["__sr__"]) if "__sr__" in z.files else sr
+        return {n: Audio(z[n], cached_sr) for n in names}
+    except Exception as e:
+        log.warning("stem cache unreadable (%r), recomputing", e)
+        return None
+
+
+def _cache_save(path: str, stems: Dict[str, Audio], sr: int) -> None:
+    try:
+        arrays = {n: st.data for n, st in stems.items()}
+        arrays["__sr__"] = np.asarray(sr)
+        np.savez(path, **arrays)
+    except Exception as e:
+        log.warning("could not write stem cache (%r)", e)
 
 
 def pick_device(requested: str = "auto") -> str:
@@ -79,10 +141,23 @@ def separate(
     backend = available_backend()
     log.info("separation backend: %s (device=%s)", backend, pick_device(device))
 
+    cdir = _cache_dir()
+    cpath = None
+    if cdir is not None:
+        cpath = os.path.join(cdir, _cache_key(audio, model_name, shifts,
+                                              overlap, segment) + ".npz")
+        hit = _cache_load(cpath, audio.sr)
+        if hit is not None:
+            log.info("stem cache hit: %s", os.path.basename(cpath))
+            return hit
+
     if backend == "demucs":
         try:
-            return _separate_demucs(audio, model_name, device, shifts, overlap,
-                                    segment, progress)
+            out = _separate_demucs(audio, model_name, device, shifts, overlap,
+                                   segment, progress)
+            if cpath:
+                _cache_save(cpath, out, audio.sr)
+            return out
         except Exception as e:
             log.warning("demucs failed (%r), falling back to torchaudio", e)
             backend = "torchaudio"
@@ -107,6 +182,7 @@ def _separate_demucs(audio: Audio, model_name: str, device: str, shifts: int,
     from demucs.apply import apply_model
     from demucs.pretrained import get_model
 
+    _set_threads()
     dev = pick_device(device)
     model = get_model(model_name)
     model.to(dev)

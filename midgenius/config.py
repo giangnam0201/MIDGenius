@@ -64,6 +64,12 @@ class StemConfig:
     # Phantom-note suppression
     harmonic_suppression: bool = True     # kill octave/fifth ghosts of real notes
     harmonic_ratio: float = 0.28          # ghost must be this much weaker to be cut
+    # Pull octave-too-high detections down to their fundamental. Basic Pitch's
+    # signature error is latching onto the 2nd harmonic when the fundamental is
+    # weak; each such note is scored wrong twice (phantom high, miss low).
+    octave_correction: bool = False
+    octave_sub_ratio: float = 0.80
+    octave_onset_ratio: float = 0.50
     min_confidence: float = 0.14          # drop notes whose mean activation is low
     max_polyphony: int = 0                # 0 = unlimited; else keep N strongest
 
@@ -179,6 +185,22 @@ class Config:
     # Separation can strip the attack transients that onset detection needs -
     # see _merge_pitched_sources - so the mix is a safety net, not a luxury.
     transcribe_mix: bool = True
+    # Take pitched notes from the whole mix only, using the separated stems just
+    # for drums. On clean, well-separated-in-frequency material (synths, chiptune)
+    # Demucs' pitched stems carry artefacts that read as phantom notes, and the
+    # stem-union over-produces badly; the untouched mix is far cleaner. Measured
+    # on a synth track: mix-only precision 50% vs stem-union 40%. Off keeps the
+    # full stem-union behaviour, which wins on dense real recordings.
+    pitched_from_mix_only: bool = False
+    # Mix-primary union: take the mix as the precise base and add back only
+    # confident stem notes the mix missed. Keeps mix precision on clean material
+    # while still recovering masked notes on dense mixes. Measured on both
+    # reference pairs, this beat the old stem-union: aria F1 55.8 -> 58.7 with no
+    # regression on the dense real recording (graze 55.1 -> 55.0). The 0.3
+    # confidence floor is what preserves graze - a higher floor drops the masked
+    # notes the stems exist to recover.
+    mix_primary: bool = True
+    min_stem_confidence: float = 0.3
     # A mono-tracked stem (vocals) this far below the loudest stem is
     # separation bleed rather than an instrument, and a monophonic tracker
     # turns bleed into confident wrong notes.

@@ -44,6 +44,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="speed/accuracy preset (default: good)")
     g.add_argument("--no-separate", action="store_true",
                    help="skip stem separation and transcribe the whole mix")
+    g.add_argument("--pitched-from-mix-only", action="store_true",
+                   help="take pitched notes from the whole mix, using stems only "
+                        "for drums (cleaner on synth/electronic material)")
+    g.add_argument("--no-mix-primary", action="store_true",
+                   help="disable mix-primary merging (use the older stem-union)")
+    g.add_argument("--min-stem-confidence", type=float, default=None,
+                   help="confidence floor for stem notes added under mix-primary")
     g.add_argument("--no-mix-pass", action="store_true",
                    help="do not also transcribe the untouched mix; separation "
                         "can strip attacks, so this usually loses notes")
@@ -131,6 +138,11 @@ def config_from_args(args: argparse.Namespace) -> Config:
         cfg.separation_shifts = max(1, args.shifts)
     cfg.lossy_repair = not args.no_lossy_repair
     cfg.transcribe_mix = not args.no_mix_pass
+    cfg.pitched_from_mix_only = args.pitched_from_mix_only
+    if args.no_mix_primary:
+        cfg.mix_primary = False
+    if args.min_stem_confidence is not None:
+        cfg.min_stem_confidence = args.min_stem_confidence
 
     if args.only:
         keep = {s.strip().lower() for s in args.only.split(",") if s.strip()}
