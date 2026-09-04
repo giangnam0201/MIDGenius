@@ -112,6 +112,36 @@ class TempoMap:
         return events
 
 
+def _maybe_double_tempo(onset_env: np.ndarray, beats: np.ndarray, tempo: float,
+                        sr: int, hop: int, slow_below: float = 100.0,
+                        evidence: float = 0.55) -> Tuple[float, np.ndarray]:
+    """Double a too-slow tempo when real onsets sit between the tracked beats.
+
+    librosa often locks onto the half-note pulse of a straight groove, reporting
+    ~64 BPM for a ~128 BPM song. The notes still land at the right times, but the
+    tempo map and bar lines come out half speed. If the tempo is slow and the
+    onset envelope at the *midpoints* between beats is about as strong as on the
+    beats themselves, there is a real beat there and the true tempo is double -
+    so a beat is inserted between each pair. Evidence-gated, so a genuine slow
+    ballad (weak or empty midpoints) is left alone.
+    """
+    if tempo <= 0 or tempo >= slow_below or len(beats) < 4:
+        return tempo, beats
+    frames = np.clip((beats * sr / hop).round().astype(int), 0, len(onset_env) - 1)
+    mids = (beats[:-1] + beats[1:]) / 2.0
+    mid_frames = np.clip((mids * sr / hop).round().astype(int), 0, len(onset_env) - 1)
+    on_beat = float(np.median(onset_env[frames]))
+    on_mid = float(np.median(onset_env[mid_frames]))
+    if on_beat <= 1e-9 or on_mid < evidence * on_beat:
+        return tempo, beats
+    doubled = np.empty(len(beats) * 2 - 1, dtype=np.float64)
+    doubled[0::2] = beats
+    doubled[1::2] = mids
+    log.info("doubling tempo %.1f -> %.1f BPM (onsets between beats: %.2f of beat)",
+             tempo, tempo * 2, on_mid / on_beat)
+    return tempo * 2.0, doubled
+
+
 def analyze_rhythm(y: np.ndarray, sr: int, fixed_tempo: Optional[float] = None,
                    beats_per_bar: int = 4,
                    percussive_hint: Optional[np.ndarray] = None) -> TempoMap:
@@ -145,6 +175,9 @@ def analyze_rhythm(y: np.ndarray, sr: int, fixed_tempo: Optional[float] = None,
 
     if len(beats) < 2:
         return TempoMap(beats, float(fixed_tempo or tempo or 120.0), 0, beats_per_bar)
+
+    if not fixed_tempo:
+        tempo, beats = _maybe_double_tempo(onset_env, beats, tempo, sr, hop)
 
     downbeat = _estimate_downbeat(onset_env, beats, sr, hop, beats_per_bar)
     beats = _anchor_grid(beats, downbeat, beats_per_bar)
