@@ -225,6 +225,7 @@ Mutually-exclusive voices (hat vs ride, snare vs tom) are arbitrated on decay ti
 | Symptom | Fix |
 |---|---|
 | **Sounds thin / hollow** vs the record | `--dense` — the adaptive threshold keeps only the loudest notes on densely-written tracks |
+| **Clean synth / rendered source** | `--pitched-from-mix-only` — on well-separated synthetic material the stems mostly add artefacts; measured **+1.7 F1** (precision 66→76) on a synth track. Avoid it on dense real recordings, where it costs 7 points of recall |
 | Missing quiet notes | lower `--onset-threshold` (try `0.3`) |
 | Too many phantom notes | raise it, or `--max-polyphony 6` |
 | Bass an octave off | `cfg.stems["bass"].min_midi = 28` |
