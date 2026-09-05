@@ -260,6 +260,13 @@ class Config:
     # Pick a General MIDI instrument for the catch-all "other" stem from its
     # own acoustics (sustain + brightness) instead of always acoustic piano.
     guess_instruments: bool = True
+    # Decode one note set from the mix and "other" stem probability maps
+    # combined (elementwise max) instead of reconciling two decoded note lists.
+    # Measured a wash - aria 63.4 -> 63.3, graze 55.3 -> 55.1 - because
+    # mix-primary already folds the stem's confident notes in, so fusing the
+    # maps is just a second route to evidence the merge already has. Kept as an
+    # option; off by default.
+    fuse_stem_posteriorgram: bool = False
     auto_song_union: bool = True
     vocal_active_db: float = 15.0
     # In mix-only mode, still transcribe the (cleanly separated) vocal stem so

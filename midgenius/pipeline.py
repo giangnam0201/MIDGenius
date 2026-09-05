@@ -262,7 +262,10 @@ def convert(input_path: str, output_path: Optional[str] = None,
     # even if the mix pass was otherwise disabled - else the output is drums only.
     if cfg.separate and (cfg.transcribe_mix or mix_only):
         t0 = time.time()
-        mix_track = transcribe_stem(src, cfg.mixdown_stem, cutoff)
+        if cfg.fuse_stem_posteriorgram and "other" in stems:
+            mix_track = _transcribe_fused(src, stems["other"], cfg.mixdown_stem)
+        else:
+            mix_track = transcribe_stem(src, cfg.mixdown_stem, cutoff)
         timings["transcribe:mix"] = time.time() - t0
         log.info("%-8s %4d notes (%.1fs)", "mix", len(mix_track.notes),
                  timings["transcribe:mix"])
@@ -367,6 +370,37 @@ def transcribe_stem(stem: A.Audio, cfg: StemConfig,
     return track
 
 
+def _transcribe_fused(mix: A.Audio, other: A.Audio, cfg: StemConfig) -> Track:
+    """Decode one note set from the mix and stem probability maps combined.
+
+    The usual path decodes the mix and the stems separately and then reconciles
+    two note lists, which forces a choice about every disagreement after the
+    fact. Combining the posteriorgrams first - taking the elementwise maximum,
+    so a note either source is confident about survives - lets the decoder see
+    all the evidence at once and form one coherent set of notes, with onsets and
+    note boundaries derived from the union rather than stitched together.
+    """
+    post_mix = basicpitch.predict(mix.mono(), mix.sr)
+    post_other = basicpitch.predict(other.mono(), other.sr)
+    n = min(post_mix.n_frames, post_other.n_frames)
+    if n == 0:
+        return transcribe_stem(mix, cfg)
+    fused = basicpitch.Posteriorgram(
+        note=np.maximum(post_mix.note[:n], post_other.note[:n]),
+        onset=np.maximum(post_mix.onset[:n], post_other.onset[:n]),
+        contour=np.maximum(post_mix.contour[:n], post_other.contour[:n]),
+        times=post_mix.times[:n],
+    )
+    notes = _decode_from_post(fused, cfg)
+    track = Track(name=cfg.name, notes=notes, program=cfg.program,
+                  channel=cfg.channel, is_drum=False)
+    if notes and cfg.velocity_from_audio:
+        dynamics.assign_velocities(notes, _band_energy(mix.mono(), mix.sr, cfg))
+    elif notes:
+        dynamics.assign_velocities(notes, None)
+    return track
+
+
 def _band_energy(y: np.ndarray, sr: int, cfg: StemConfig):
     try:
         return dynamics.BandEnergy(y, sr, fmin_midi=max(21, cfg.min_midi - 2))
@@ -399,7 +433,12 @@ def _transcribe_poly(y: np.ndarray, sr: int, cfg: StemConfig) -> List[Note]:
         post = basicpitch.predict_tta(y, sr, semitones=tuple(cfg.tta_semitones))
     else:
         post = basicpitch.predict(y, sr)
+    return _decode_from_post(post, cfg)
 
+
+def _decode_from_post(post: basicpitch.Posteriorgram,
+                      cfg: StemConfig) -> List[Note]:
+    """Note decoding and cleanup for an already-computed posteriorgram."""
     onset_thr, frame_thr = cfg.onset_threshold, cfg.frame_threshold
     if cfg.adaptive_threshold:
         onset_thr, frame_thr = N.adaptive_thresholds(post)
