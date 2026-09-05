@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from midgenius import audio as A
-from midgenius import basicpitch, drums as D, dynamics, midiout, mono
+from midgenius import basicpitch, drums as D, dynamics, midiout, mono, timbre
 from midgenius import notes as N
 from midgenius import rhythm, separation
 from midgenius.config import Config, StemConfig
@@ -232,6 +232,12 @@ def convert(input_path: str, output_path: Optional[str] = None,
 
         t0 = time.time()
         track = transcribe_stem(stem, stem_cfg, cutoff)
+        # "other" is a catch-all (brass, guitar, keys, pads); playing all of it
+        # as acoustic piano is the most audible wrong-instrument error, so pick
+        # a General MIDI family from how the stem actually sounds.
+        if cfg.guess_instruments and name == "other" and track.notes:
+            track.program = timbre.guess_program(stem.mono(), stem.sr,
+                                                 default=track.program)
         timings["transcribe:" + name] = time.time() - t0
         if track.notes:
             tracks.append(track)

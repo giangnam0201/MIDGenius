@@ -239,6 +239,9 @@ class Config:
     auto_dense_mix_only: bool = False
     # For a produced song (active vocal stem), keep the union of separate
     # instrument tracks instead of collapsing to one mix-primary harmony voice.
+    # Pick a General MIDI instrument for the catch-all "other" stem from its
+    # own acoustics (sustain + brightness) instead of always acoustic piano.
+    guess_instruments: bool = True
     auto_song_union: bool = True
     vocal_active_db: float = 15.0
     # In mix-only mode, still transcribe the (cleanly separated) vocal stem so
