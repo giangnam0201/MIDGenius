@@ -72,6 +72,9 @@ class StemConfig:
     # recording 53.7 -> 55.6 (recall 46 -> 48) - and going lower (2-3) starts
     # fragmenting held notes again.
     energy_tolerance: int = 4
+    # Same-pitch notes closer than this are fused into one held note. Too large
+    # and a genuinely repeated note loses its second onset.
+    merge_gap_ms: float = 30.0
 
     # Phantom-note suppression
     harmonic_suppression: bool = True     # kill octave/fifth ghosts of real notes
@@ -191,9 +194,12 @@ def default_stems() -> Dict[str, StemConfig]:
             max_midi=104,
             onset_threshold=0.6,
             frame_threshold=0.30,
-            # 45 ms, down from 64: recovers short notes the longer floor cut,
-            # measured +0.7 aria F1 (recall up) with the dense recording neutral.
-            min_note_ms=45.0,
+            # 25 ms, down from 64: fast arpeggios and passing notes were being
+            # thrown away as too short. Swept on both reference pairs, 20-25 is
+            # the peak (aria F1 62.5 -> 63.4); below that real notes start
+            # fragmenting. Bass and vocals keep their longer, instrument-
+            # appropriate floors - a 25 ms bass note is not a real one.
+            min_note_ms=25.0,
             harmonic_suppression=True,
             min_confidence=0.16,
             max_polyphony=8,
@@ -278,7 +284,7 @@ class Config:
         default_factory=lambda: StemConfig(
             name="mixdown", method="poly", program=GM_ACOUSTIC_GRAND,
             onset_threshold=0.6, frame_threshold=0.30, max_polyphony=10,
-            min_note_ms=45.0,
+            min_note_ms=25.0,
         )
     )
 

@@ -177,8 +177,8 @@ Numbers, not adjectives. Scored with `mir_eval` — a note counts only if its on
 
 | Track | Precision | Recall | **Pitched F1** | Drums F1 |
 |---|:---:|:---:|:---:|:---:|
-| **aria** — 8.5 min synth, audio rendered 1:1 from its MIDI | 65.1% | 60.0% | **62.5%** | 52.9% |
-| **graze** — 3 min recording vs a separate human arrangement | 66.1% | 48.7% | **56.1%** | 49.7% |
+| **aria** — 8.5 min synth, audio rendered 1:1 from its MIDI | 66.0% | 61.0% | **63.4%** | 52.9% |
+| **graze** — 3 min recording vs a separate human arrangement | 65.2% | 48.6% | **55.7%** | 49.7% |
 
 > `aria` is the stricter test: the audio is rendered from the reference, so alignment is exact and **every** discrepancy is the transcriber's fault.
 

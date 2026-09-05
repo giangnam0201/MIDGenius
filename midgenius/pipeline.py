@@ -429,7 +429,7 @@ def _transcribe_poly(y: np.ndarray, sr: int, cfg: StemConfig) -> List[Note]:
                                       corr_threshold=cfg.octave_deghost_corr)
     if cfg.harmonic_suppression:
         notes = N.suppress_harmonic_ghosts(notes, ratio=cfg.harmonic_ratio)
-    notes = N.merge_repeats(notes)
+    notes = N.merge_repeats(notes, gap_ms=cfg.merge_gap_ms)
     notes = N.remove_duplicates(notes)
     notes = N.enforce_min_duration(notes, cfg.min_note_ms)
     if cfg.max_polyphony:
