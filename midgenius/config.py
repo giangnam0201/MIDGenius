@@ -65,7 +65,13 @@ class StemConfig:
     # real ones (recall 58.7 -> 58.5, unchanged) while precision falls 66 -> 49.
     # The leftover frame energy it sweeps up simply is not missed notes.
     melodia_trick: bool = False
-    energy_tolerance: int = 11
+    # How many frames a note may sit below the frame threshold before it is
+    # ended. 11 (~128 ms) let a decaying note run on and swallow the next attack
+    # at the same pitch, losing that onset entirely. Measured across both
+    # reference pairs, 4 is better on both - aria F1 62.1 -> 62.5, the dense
+    # recording 53.7 -> 55.6 (recall 46 -> 48) - and going lower (2-3) starts
+    # fragmenting held notes again.
+    energy_tolerance: int = 4
 
     # Phantom-note suppression
     harmonic_suppression: bool = True     # kill octave/fifth ghosts of real notes
