@@ -81,7 +81,7 @@ DEFAULT_BANDS: Tuple[DrumBand, ...] = (
     # kicks 1048 -> 86, and the dense recording's real kicks are fully preserved
     # (its kick F1 even rises slightly as its own phantoms drop).
     DrumBand("kick",     GM_KICK,        30.0,   130.0, sensitivity=0.90,
-             min_interval=0.070, contrast_ref=(300.0, 1200.0), contrast_db=16.0),
+             min_interval=0.070, contrast_ref=(300.0, 1200.0), contrast_db=20.0),
     # sensitivity raised 1.5 -> 2.5: the snare band was firing on any broadband
     # transient, producing ~10x too many hits on synth material. Measured: aria
     # snare precision 5% -> 15% (drum F1 45.6 -> 52.9) with the dense recording's
