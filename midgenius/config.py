@@ -58,6 +58,12 @@ class StemConfig:
     # ground-truth chord benchmark it cost 36 points of precision and produced
     # every one of the octave errors. Off by default; worth enabling only for
     # sparse, quiet solo material where missed notes matter more.
+    #
+    # Retested after the envelope octave-deghost landed, on the theory that the
+    # deghost would clean up the octave errors melodia used to cause. It does
+    # not help: melodia adds ~900 notes to the synth track and recovers *no*
+    # real ones (recall 58.7 -> 58.5, unchanged) while precision falls 66 -> 49.
+    # The leftover frame energy it sweeps up simply is not missed notes.
     melodia_trick: bool = False
     energy_tolerance: int = 11
 
