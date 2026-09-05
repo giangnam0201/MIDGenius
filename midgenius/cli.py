@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--harmonic-ratio", type=float, default=None,
                    help="octave/harmonic ghost is cut if this much weaker than "
                         "its parent (higher = more aggressive; default 0.28)")
+    g.add_argument("--dense", action="store_true",
+                   help="capture far more notes (fuller, busier output). Good for "
+                        "densely-written material - chiptune, arpeggios, walls of "
+                        "synth - where the adaptive threshold keeps only the "
+                        "loudest notes and the result sounds thin")
     g.add_argument("--no-octave-deghost", action="store_true",
                    help="keep octave harmonic ghosts (disable envelope-correlation "
                         "octave suppression, which is on by default)")
@@ -181,6 +186,15 @@ def config_from_args(args: argparse.Namespace) -> Config:
             s.harmonic_suppression = False
         if args.harmonic_ratio is not None:
             s.harmonic_ratio = args.harmonic_ratio
+        if args.dense:
+            # Measured: this roughly doubles the note count. It is a deliberate
+            # trade - on sparse or well-separated material it costs a lot of
+            # precision (aria F1 62 -> 45), but on densely-written tracks the
+            # adaptive threshold keeps only the loudest notes and the output
+            # sounds hollow, which no accuracy number captures.
+            s.adaptive_threshold = False
+            s.onset_threshold = 0.30
+            s.frame_threshold = 0.15
         if args.no_octave_deghost:
             s.octave_deghost_env = False
         if args.octave_deghost_corr is not None:

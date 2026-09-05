@@ -141,6 +141,7 @@ python -m midgenius.cli *.mp3 --outdir midi/
 | `--min-stem-confidence 0.3` | How much stem detail the mix-primary merge trusts |
 | `--no-mix-primary` | Use the older stem-union merge |
 | `--pitched-from-mix-only` | Take pitched notes from the mix alone |
+| `--dense` | **Capture far more notes** — for densely-written material (chiptune, arpeggios) where the default sounds thin. Roughly 2.5× the notes; costs precision on sparse material |
 | `--max-polyphony N` | Cap simultaneous voices per stem |
 | `--onset-threshold` | Lower ⇒ more notes (and more phantoms) |
 | `--no-octave-deghost` | Keep octave harmonic ghosts (diagnostic) |
@@ -223,6 +224,7 @@ Mutually-exclusive voices (hat vs ride, snare vs tom) are arbitrated on decay ti
 
 | Symptom | Fix |
 |---|---|
+| **Sounds thin / hollow** vs the record | `--dense` — the adaptive threshold keeps only the loudest notes on densely-written tracks |
 | Missing quiet notes | lower `--onset-threshold` (try `0.3`) |
 | Too many phantom notes | raise it, or `--max-polyphony 6` |
 | Bass an octave off | `cfg.stems["bass"].min_midi = 28` |
